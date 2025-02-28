@@ -10,6 +10,7 @@ struct TranscriptionSegment: Identifiable {
     var text: String
     var startTime: TimeInterval
     var endTime: TimeInterval
+    var isActive: Bool = true 
 }
 
 
@@ -28,7 +29,10 @@ struct ContentView: View {
     @State private var recognitionTask: SFSpeechRecognitionTask?
     // Ajoutez ces variables d'état à votre ContentView
     @State private var transcriptionSegments: [TranscriptionSegment] = []
-    @State private var formattedTranscription: String = ""    
+    @State private var formattedTranscription: String = ""
+    @State private var isPlayingSelectedSegments: Bool = false
+    @State private var currentSegmentIndex: Int = 0
+    @State private var playbackTimer: Timer?
 
 
     var body: some View {
@@ -164,50 +168,96 @@ VStack {
         .padding()
     }
     
-    // Modifiez la partie affichant les segments dans l'interface utilisateur
-    if !transcriptionSegments.isEmpty && !isTranscribing {
-        Divider()
+// Modifiez la partie affichant les segments dans l'interface utilisateur
+if !transcriptionSegments.isEmpty && !isTranscribing {
+    Divider()
+    
+    VStack(alignment: .leading) {
         
-        VStack(alignment: .leading) {
-            
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(transcriptionSegments) { segment in
-                        Button(action: {
-                            navigateToSegment(segment)
-                        }) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(String(format: "%.1fs - %.1fs", segment.startTime, segment.endTime))
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                }
-                                Text(segment.text)
-                                    .font(.body)
-                                    .foregroundColor(.primary)
-                                    .lineLimit(nil)
-                                    .fixedSize(horizontal: false, vertical: true)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(transcriptionSegments.indices, id: \.self) { index in
+                    Button(action: {
+                        // Toggle l'état d'activation du segment
+                        transcriptionSegments[index].isActive.toggle()
+                        // Mettre à jour la transcription formatée basée sur les segments actifs
+                        updateFormattedTranscription()
+                    }) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(String(format: "%.1fs - %.1fs", transcriptionSegments[index].startTime, transcriptionSegments[index].endTime))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                // Indicateur visuel de l'état d'activation
+                                Image(systemName: transcriptionSegments[index].isActive ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(transcriptionSegments[index].isActive ? .green : .gray)
                             }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
+                            Text(transcriptionSegments[index].text)
+                                .font(.body)
+                                .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(transcriptionSegments[index].isActive ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    // Ajouter une fonctionnalité de double-clic pour naviguer au temps du segment
+                    .onTapGesture(count: 2) {
+                        navigateToSegment(transcriptionSegments[index])
                     }
                 }
-                .padding()
             }
+            .padding()
         }
     }
-
-    
+}
     Spacer()
+    
+    // Ajoutez le bouton de lecture en bas à droite
+        if !transcriptionSegments.isEmpty && !isTranscribing {
+            Spacer()
+            
+            HStack {
+                Spacer()
+                
+                Button(action: {
+                    // Lorsque le bouton est cliqué, nous allons lancer la lecture des segments sélectionnés
+                    togglePlaySelectedSegments()
+                }) {
+                    HStack {
+                        Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                            .resizable()
+                            .frame(width: 50, height: 50)
+                            .foregroundColor(.green)                        
+                    }
+                    .padding(12)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(10)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.bottom, 20)
+                .padding(.trailing, 20)
+            }
+        }
+    
 }
 .frame(maxWidth: .infinity)
 .background(Color.gray.opacity(0.1))
         }
+        .onDisappear {
+            // Invalider le timer quand la vue disparaît
+            playbackTimer?.invalidate()
+            playbackTimer = nil
+            
+            // Nettoyer d'autres ressources si nécessaire
+            player.pause()
+            recognitionTask?.cancel()
+            recognitionTask = nil
+        }        
         .onAppear {
             addPeriodicTimeObserver()
         }
@@ -232,7 +282,9 @@ VStack {
                 DispatchQueue.main.async {
                     videoDuration = CMTimeGetSeconds(videoAsset.duration)
                     currentTime = 0
-                    isPlaying = false
+                    // Démarrer la lecture automatiquement
+                    player.play()
+                    isPlaying = true
                 }
             } else {
                 print("Failed to load duration: \(String(describing: error?.localizedDescription))")
@@ -259,6 +311,18 @@ VStack {
         // Mettre à jour le temps actuel
         currentTime = segment.startTime
     }
+    
+    // Ajoutez cette fonction à votre ContentView
+    private func updateFormattedTranscription() {
+        // Filtrer uniquement les segments actifs
+        let activeSegments = transcriptionSegments.filter { $0.isActive }
+        
+        // Recréer la transcription formatée à partir des segments actifs
+        formattedTranscription = processTranscriptionSegments(activeSegments)
+        
+        // Mettre à jour le texte affiché
+        transcriptionText = formattedTranscription
+    }
 
     
     // Replace your transcript() function with this simplified version
@@ -266,6 +330,12 @@ VStack {
         guard let videoURL = videoURL else {
             transcriptionText = "No video URL available."
             return
+        }
+        
+        // Arrêter la lecture vidéo si elle est en cours
+        if isPlaying {
+            player.pause()
+            isPlaying = false
         }
         
         // Update UI
@@ -439,10 +509,12 @@ VStack {
                 let phrase = TranscriptionSegment(
                     text: currentPhraseText,
                     startTime: phraseStartTime,
-                    endTime: phraseEndTime
+                    endTime: phraseEndTime,
+                    isActive: true
                 )
                 phrases.append(phrase)
             }
+            
         }
         
         return phrases
@@ -595,6 +667,89 @@ private func processTranscriptionSegments(_ segments: [TranscriptionSegment]) ->
     
     return formattedText
 }
+    
+    // Ajoutez cette fonction pour gérer la lecture des segments sélectionnés
+    private func togglePlaySelectedSegments() {
+        if isPlayingSelectedSegments {
+            // Si déjà en cours de lecture, arrêter
+            stopPlayingSelectedSegments()
+        } else {
+            // Sinon, commencer la lecture
+            startPlayingSelectedSegments()
+        }
+        
+        isPlayingSelectedSegments.toggle()
+    }
+
+// Fonction pour démarrer la lecture des segments sélectionnés
+private func startPlayingSelectedSegments() {
+    // Filtrer les segments actifs
+    let activeSegments = transcriptionSegments.filter { $0.isActive }
+    
+    // S'assurer qu'il y a des segments actifs
+    if activeSegments.isEmpty {
+        return
+    }
+    
+    // Réinitialiser l'index
+    currentSegmentIndex = 0
+    
+    // Commencer par le premier segment actif
+    playSegment(activeSegments[currentSegmentIndex])
+    
+    // Configurer un timer pour gérer le passage d'un segment à l'autre
+    playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+        
+        // Vérifier si nous sommes toujours dans le segment actuel
+        let activeSegments = self.transcriptionSegments.filter { $0.isActive }
+        if self.currentSegmentIndex < activeSegments.count {
+            let currentSegment = activeSegments[self.currentSegmentIndex]
+            let currentPlayerTime = CMTimeGetSeconds(self.player.currentTime())
+            
+            // Si nous avons atteint la fin du segment actuel
+            if currentPlayerTime >= currentSegment.endTime {
+                // Passer au segment suivant
+                self.currentSegmentIndex += 1
+                
+                // S'il y a encore des segments à lire
+                if self.currentSegmentIndex < activeSegments.count {
+                    self.playSegment(activeSegments[self.currentSegmentIndex])
+                } else {
+                    // Plus de segments à lire, arrêter la lecture
+                    self.stopPlayingSelectedSegments()
+                    self.isPlayingSelectedSegments = false
+                }
+            }
+        }
+    }
+}
+
+    // Fonction pour lire un segment spécifique
+    private func playSegment(_ segment: TranscriptionSegment) {
+        // Aller au début du segment
+        let time = CMTime(seconds: segment.startTime, preferredTimescale: 600)
+        player.seek(to: time)
+        
+        // Lancer la lecture
+        player.play()
+        isPlaying = true
+        
+        // Mettre à jour l'UI
+        currentTime = segment.startTime
+    }
+
+    // Fonction pour arrêter la lecture des segments sélectionnés
+    private func stopPlayingSelectedSegments() {
+        // Arrêter le timer
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        
+        // Mettre en pause le lecteur
+        player.pause()
+        isPlaying = false
+    }
+    
+    
 
 }
 

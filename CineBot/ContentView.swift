@@ -3,6 +3,18 @@ import AVKit
 import UniformTypeIdentifiers
 import Speech
 
+
+// Ajout d'une structure pour stocker les segments avec horodatage
+struct TranscriptionSegment: Identifiable {
+    var id = UUID()
+    var text: String
+    var startTime: TimeInterval
+    var endTime: TimeInterval
+}
+
+
+
+
 struct ContentView: View {
     @State private var player = AVPlayer()
     @State private var asset: AVAsset?
@@ -14,12 +26,26 @@ struct ContentView: View {
     @State private var transcriptionText: String = ""
     @State private var isTranscribing: Bool = false
     @State private var recognitionTask: SFSpeechRecognitionTask?
+    // Ajoutez ces variables d'état à votre ContentView
+    @State private var transcriptionSegments: [TranscriptionSegment] = []
+    @State private var formattedTranscription: String = ""    
 
 
     var body: some View {
         HStack {
             // Video Player on the left
             VStack {
+                // Remplacer le Text simple par une banner
+                ZStack {
+                    Rectangle()
+                        .fill(Color.blue.opacity(0.2))
+                        .frame(height: 60)
+                    
+                    Text("LECTEUR VIDÉO")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.blue)
+                }
+                
                 VideoPlayer(player: player)
                     .aspectRatio(9/16, contentMode: .fit)
                     .cornerRadius(10)
@@ -99,28 +125,88 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Transcription area on the right
-            VStack {
-                ScrollView {
-                      if isTranscribing {
-                          VStack {
-                              ProgressView()
-                                  .padding()
-                              Text(transcriptionText)
-                                  .padding()
-                                  .frame(maxWidth: .infinity, alignment: .leading)
-                          }
-                      } else {
-                          Text(transcriptionText.isEmpty ? "No transcription available yet. Click the transcription button to start." : transcriptionText)
-                              .padding()
-                              .frame(maxWidth: .infinity, alignment: .leading)
-                      }
-                  }
-                  .padding()
-                  Spacer()
+// Zone de transcription à droite
+VStack {
+    // Remplacer le Text simple par une banner
+    ZStack {
+        Rectangle()
+            .fill(Color.green.opacity(0.2))
+            .frame(height: 60)
+        
+        Text("TRANSCRIPTION")
+            .font(.system(size: 24, weight: .bold))
+            .foregroundColor(.green)
+    }
+    
+    if isTranscribing {
+        ScrollView {
+            if isTranscribing {
+                VStack {
+                    ProgressView()
+                        .padding()
+                    Text(transcriptionText)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineSpacing(5) // Améliore la lisibilité des lignes
+                }
+            } else if !transcriptionText.isEmpty {
+                // Texte formaté avec les sauts de ligne et la ponctuation
+                Text(transcriptionText)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineSpacing(5)
+            } else {
+                Text("Pas encore de transcription disponible. Cliquez sur le bouton de transcription pour commencer.")
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity)
-            .background(Color.gray.opacity(0.1))
+        }
+        .padding()
+    }
+    
+    // Modifiez la partie affichant les segments dans l'interface utilisateur
+    if !transcriptionSegments.isEmpty && !isTranscribing {
+        Divider()
+        
+        VStack(alignment: .leading) {
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(transcriptionSegments) { segment in
+                        Button(action: {
+                            navigateToSegment(segment)
+                        }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(String(format: "%.1fs - %.1fs", segment.startTime, segment.endTime))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                }
+                                Text(segment.text)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+
+    
+    Spacer()
+}
+.frame(maxWidth: .infinity)
+.background(Color.gray.opacity(0.1))
         }
         .onAppear {
             addPeriodicTimeObserver()
@@ -160,6 +246,18 @@ struct ContentView: View {
         player.addPeriodicTimeObserver(forInterval: time, queue: .main) { time in
             currentTime = CMTimeGetSeconds(time)
         }
+    }
+
+    // Ajoutez cette fonction à votre ContentView
+    private func navigateToSegment(_ segment: TranscriptionSegment) {
+        // Créer un CMTime à partir du temps de début du segment
+        let time = CMTime(seconds: segment.startTime, preferredTimescale: 600)
+        
+        // Naviguer vers ce temps dans la vidéo
+        player.seek(to: time)
+        
+        // Mettre à jour le temps actuel
+        currentTime = segment.startTime
     }
 
     
@@ -292,33 +390,97 @@ struct ContentView: View {
         }
     }
 
-    // Helper function to perform speech recognition
+
+    // Ajoutez cette fonction pour créer des segments de phrases à partir des segments originaux
+    private func createPhraseSegments(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
+        guard !segments.isEmpty else { return [] }
+        
+        var phrases: [TranscriptionSegment] = []
+        var currentPhraseText = ""
+        var phraseStartTime = segments[0].startTime
+        var phraseEndTime = segments[0].endTime
+        
+        // Configuration des seuils de pause (utilisez les mêmes que dans processTranscriptionSegments)
+        let longPauseThreshold: TimeInterval = 0.4
+        let mediumPauseThreshold: TimeInterval = 0.2
+        
+        for (index, segment) in segments.enumerated() {
+            // Si ce n'est pas le premier segment, analysez la pause
+            if index > 0 {
+                let pauseDuration = segment.startTime - segments[index-1].endTime
+                
+                // Si c'est une longue pause, on termine la phrase actuelle
+                if pauseDuration > longPauseThreshold {
+                    // Créer une nouvelle phrase avec le texte accumulé
+                    if !currentPhraseText.isEmpty {
+                        let phrase = TranscriptionSegment(
+                            text: currentPhraseText,
+                            startTime: phraseStartTime,
+                            endTime: segments[index-1].endTime
+                        )
+                        phrases.append(phrase)
+                        
+                        // Réinitialiser pour la nouvelle phrase
+                        currentPhraseText = ""
+                        phraseStartTime = segment.startTime
+                    }
+                }
+            }
+            
+            // Ajouter le texte du segment à la phrase en cours
+            if !currentPhraseText.isEmpty && !currentPhraseText.hasSuffix(" ") {
+                currentPhraseText += " "
+            }
+            currentPhraseText += segment.text
+            phraseEndTime = segment.endTime
+            
+            // Si c'est le dernier segment, on ajoute la phrase en cours
+            if index == segments.count - 1 && !currentPhraseText.isEmpty {
+                let phrase = TranscriptionSegment(
+                    text: currentPhraseText,
+                    startTime: phraseStartTime,
+                    endTime: phraseEndTime
+                )
+                phrases.append(phrase)
+            }
+        }
+        
+        return phrases
+    }
+
+    // Modifiez la fonction performSpeechRecognition pour utiliser les phrases
     private func performSpeechRecognition(on audioURL: URL) {
-        // Request authorization first
+        // Demander l'autorisation d'abord
         SFSpeechRecognizer.requestAuthorization { status in
             DispatchQueue.main.async {
                 if status != .authorized {
-                    self.transcriptionText = "Speech recognition not authorized: \(status.rawValue)"
+                    self.transcriptionText = "Reconnaissance vocale non autorisée: \(status.rawValue)"
                     self.isTranscribing = false
                     return
                 }
                 
-                // Create the recognizer
+                // Créer le recognizer avec la locale française
                 guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR")) else {
                     self.transcriptionText = "Reconnaissance vocale non disponible pour le français."
                     self.isTranscribing = false
                     return
                 }
-                    
-                // Create the recognition request
-                let request = SFSpeechURLRecognitionRequest(url: audioURL)
-                request.shouldReportPartialResults = true
                 
-                // Start recognition
+                // Créer la requête de reconnaissance
+                let request = SFSpeechURLRecognitionRequest(url: audioURL)
+                
+                // Activer les métadonnées de segmentation
+                request.shouldReportPartialResults = true
+                request.taskHint = .dictation
+                
+                // Vider les segments précédents
+                self.transcriptionSegments = []
+                
+                // Démarrer la reconnaissance
                 let task = recognizer.recognitionTask(with: request) { result, error in
                     if let error = error {
                         DispatchQueue.main.async {
-                            self.transcriptionText = "Recognition error: \(error.localizedDescription)"
+                            self.transcriptionText = "Erreur de reconnaissance: \(error.localizedDescription)"
                             self.isTranscribing = false
                         }
                         return
@@ -327,22 +489,112 @@ struct ContentView: View {
                     guard let result = result else { return }
                     
                     DispatchQueue.main.async {
-                        // Update with partial results
-                        let transcription = result.bestTranscription.formattedString
-                        self.transcriptionText = transcription
+                        // Récupérer les segments de la transcription
+                        let segments = result.bestTranscription.segments
                         
-                        // If this is the final result, mark as complete
+                        // Stocker les segments originaux avec leurs horodatages
+                        var rawSegments: [TranscriptionSegment] = []
+                        
+                        for segment in segments {
+                            let text = segment.substring
+                            let startTime = segment.timestamp
+                            let duration = segment.duration
+                            
+                            let newSegment = TranscriptionSegment(
+                                text: text,
+                                startTime: startTime,
+                                endTime: startTime + duration
+                            )
+                            
+                            rawSegments.append(newSegment)
+                        }
+                        
+                        // Générer les segments de phrases pour l'interface utilisateur
+                        self.transcriptionSegments = self.createPhraseSegments(rawSegments)
+                        
+                        // Utiliser la fonction existante pour créer la transcription formatée
+                        self.formattedTranscription = self.processTranscriptionSegments(rawSegments)
+                        
+                        // Mettre à jour le texte de transcription
+                        self.transcriptionText = self.formattedTranscription
+                        
+                        // Si c'est le résultat final, marquer comme terminé
                         if result.isFinal {
                             self.isTranscribing = false
                         }
                     }
                 }
                 
-                // Store task for potential cancellation if needed
+                // Stocker la tâche pour annulation potentielle si nécessaire
                 self.recognitionTask = task
             }
         }
     }
+
+
+private func processTranscriptionSegments(_ segments: [TranscriptionSegment]) -> String {
+    guard !segments.isEmpty else { return "" }
+    
+    var formattedText = ""
+    var lastEndTime: TimeInterval = 0
+    
+    // Configuration des seuils de pause
+    let longPauseThreshold: TimeInterval = 0.4  // Réduit de 0.7 à 0.4 seconde
+    let mediumPauseThreshold: TimeInterval = 0.2  // Réduit de 0.3 à 0.2 seconde
+    
+    for (index, segment) in segments.enumerated() {
+        let text = segment.text
+        
+        if index > 0 {
+            // Calculer le temps entre ce segment et le précédent
+            let pauseDuration = segment.startTime - lastEndTime
+            
+            // Si la pause est suffisamment longue, ajouter une ponctuation
+            if pauseDuration > longPauseThreshold {  // Seuil réduit pour une pause significative
+                // Vérifier si le dernier caractère est déjà une ponctuation
+                let lastChar = formattedText.last
+                
+                if lastChar != "." && lastChar != "," && lastChar != "?" && lastChar != "!" {
+                    // Ajouter un point et une nouvelle ligne
+                    formattedText += ".\n\n"
+                } else if lastChar != "\n" {
+                    // Ajouter juste une nouvelle ligne
+                    formattedText += "\n\n"
+                }
+            } else if pauseDuration > mediumPauseThreshold {  // Seuil réduit pour une pause moyenne
+                // Ajouter une virgule si ce n'est pas déjà fait
+                let lastChar = formattedText.last
+                
+                if lastChar != "," && lastChar != "." && lastChar != "?" && lastChar != "!" {
+                    formattedText += ", "
+                } else {
+                    formattedText += " "
+                }
+            } else {
+                // Juste un espace
+                if !formattedText.hasSuffix(" ") {
+                    formattedText += " "
+                }
+            }
+        }
+        
+        // Ajouter le texte du segment (capitalisé si c'est après un point)
+        if index == 0 || (formattedText.last == "\n" || formattedText.hasSuffix(". ")) {
+            formattedText += text.prefix(1).uppercased() + text.dropFirst()
+        } else {
+            formattedText += text
+        }
+        
+        lastEndTime = segment.endTime
+    }
+    
+    // Assurer qu'il y a un point final
+    if !formattedText.isEmpty && !".!?".contains(formattedText.last!) {
+        formattedText += "."
+    }
+    
+    return formattedText
+}
 
 }
 
@@ -363,3 +615,6 @@ func openFileDialog() -> URL? {
     }
     return nil
 }
+
+
+

@@ -85,6 +85,8 @@ struct ContentView: View {
                         if isPlaying {
                             player.pause()
                         } else {
+                            // Réinitialiser la composition vidéo pour revenir à la taille normale
+                            player.currentItem?.videoComposition = nil
                             player.play()
                         }
                         isPlaying.toggle()
@@ -625,8 +627,8 @@ private func processTranscriptionSegments(_ segments: [TranscriptionSegment]) ->
     var lastEndTime: TimeInterval = 0
     
     // Configuration des seuils de pause
-    let longPauseThreshold: TimeInterval = 0.4  // Réduit de 0.7 à 0.4 seconde
-    let mediumPauseThreshold: TimeInterval = 0.2  // Réduit de 0.3 à 0.2 seconde
+    let longPauseThreshold: TimeInterval = 0.7  // Réduit de 0.7 à 0.4 seconde
+    let mediumPauseThreshold: TimeInterval = 0.3  // Réduit de 0.3 à 0.2 seconde
     
     for (index, segment) in segments.enumerated() {
         let text = segment.text
@@ -743,6 +745,31 @@ private func startPlayingSelectedSegments() {
         // Aller au début du segment
         let time = CMTime(seconds: segment.startTime, preferredTimescale: 600)
         player.seek(to: time)
+        
+        // Réinitialiser la composition vidéo avant d'appliquer un nouvel effet
+        player.currentItem?.videoComposition = nil
+        
+        // Vérifier la durée du segment
+        let segmentDuration = segment.endTime - segment.startTime
+        
+        // Appliquer l'effet JUMP CUT si sélectionné, si l'index du segment est pair, et si la durée est >= 3s
+        if selectedEffect == "JUMP CUT" && currentSegmentIndex % 2 == 0 && segmentDuration >= 3 {
+            // Appliquer un agrandissement X1.5 et centrer
+            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
+                let source = request.sourceImage
+                let scaleTransform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+                
+                // Calculer la translation pour centrer
+                let translateTransform = CGAffineTransform(translationX: -source.extent.width / 4, y: -source.extent.height / 4)
+                
+                // Appliquer la transformation combinée
+                let transform = scaleTransform.concatenating(translateTransform)
+                let transformedImage = source.transformed(by: transform)
+                
+                request.finish(with: transformedImage, context: nil)
+            }
+            player.currentItem?.videoComposition = videoComposition
+        }
         
         // Lancer la lecture
         player.play()

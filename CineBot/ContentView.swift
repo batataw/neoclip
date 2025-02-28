@@ -3,15 +3,6 @@ import AVKit
 import UniformTypeIdentifiers
 import Speech
 
-struct TranscriptionSegment: Identifiable {
-    let id = UUID()
-    let text: String
-    let start: String
-    let stop: String
-    let startTimestamp: Double
-    let endTimestamp: Double
-}
-
 struct ContentView: View {
     @State private var player = AVPlayer()
     @State private var asset: AVAsset?
@@ -21,7 +12,9 @@ struct ContentView: View {
     @State private var isPlaying: Bool = false
     @State private var showAlert: Bool = false
     @State private var transcriptionText: String = ""
-    @State private var transcriptionSegments: [TranscriptionSegment] = []
+    @State private var isTranscribing: Bool = false
+    @State private var recognitionTask: SFSpeechRecognitionTask?
+
 
     var body: some View {
         HStack {
@@ -108,30 +101,23 @@ struct ContentView: View {
 
             // Transcription area on the right
             VStack {
-                Text("Transcription")
-                    .font(.headline)
-                    .padding()
                 ScrollView {
-                    ForEach(transcriptionSegments) { segment in
-                        VStack(alignment: .leading) {
-                            HStack {
-                                Text("Start: \(segment.start) (\(segment.startTimestamp)s)")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                Text("Stop: \(segment.stop) (\(segment.endTimestamp)s)")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            Text(segment.text)
-                                .padding(.leading, 5)
-                                .font(.body)
-                                .lineLimit(nil)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-                .padding()
-                Spacer()
+                      if isTranscribing {
+                          VStack {
+                              ProgressView()
+                                  .padding()
+                              Text(transcriptionText)
+                                  .padding()
+                                  .frame(maxWidth: .infinity, alignment: .leading)
+                          }
+                      } else {
+                          Text(transcriptionText.isEmpty ? "No transcription available yet. Click the transcription button to start." : transcriptionText)
+                              .padding()
+                              .frame(maxWidth: .infinity, alignment: .leading)
+                      }
+                  }
+                  .padding()
+                  Spacer()
             }
             .frame(maxWidth: .infinity)
             .background(Color.gray.opacity(0.1))
@@ -176,9 +162,188 @@ struct ContentView: View {
         }
     }
 
-    // Function to handle transcription
+    
+    // Replace your transcript() function with this simplified version
     private func transcript() {
+        guard let videoURL = videoURL else {
+            transcriptionText = "No video URL available."
+            return
+        }
+        
+        // Update UI
+        isTranscribing = true
+        transcriptionText = "Starting transcription process..."
+        
+        // Create a temporary file URL for the audio
+        let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("audio_for_transcription.m4a")
+        
+        // Remove any existing file at that URL
+        if FileManager.default.fileExists(atPath: audioURL.path) {
+            do {
+                try FileManager.default.removeItem(at: audioURL)
+            } catch {
+                DispatchQueue.main.async {
+                    self.transcriptionText = "Error removing temporary file: \(error.localizedDescription)"
+                    self.isTranscribing = false
+                }
+                return
+            }
+        }
+        
+        // Create a composition with just the audio track
+        let composition = AVMutableComposition()
+        
+        // Load the asset (we already have it but let's ensure it's loaded)
+        let asset = AVAsset(url: videoURL)
+        
+        // Add audio track to composition
+        guard let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                DispatchQueue.main.async {
+                    self.transcriptionText = "Failed to create audio track for export."
+                    self.isTranscribing = false
+                }
+                return
+        }
+        
+        // Find the first audio track in the original asset
+        asset.loadValuesAsynchronously(forKeys: ["tracks"]) {
+            var error: NSError?
+            let status = asset.statusOfValue(forKey: "tracks", error: &error)
+            
+            if status != .loaded {
+                DispatchQueue.main.async {
+                    self.transcriptionText = "Failed to load asset tracks: \(error?.localizedDescription ?? "Unknown error")"
+                    self.isTranscribing = false
+                }
+                return
+            }
+            
+            let audioTracks = asset.tracks(withMediaType: .audio)
+            
+            guard let sourceAudioTrack = audioTracks.first else {
+                DispatchQueue.main.async {
+                    self.transcriptionText = "No audio track found in video."
+                    self.isTranscribing = false
+                }
+                return
+            }
+            
+            do {
+                // Insert the entire audio track into our composition
+                try compositionAudioTrack.insertTimeRange(
+                    CMTimeRange(start: .zero, duration: asset.duration),
+                    of: sourceAudioTrack,
+                    at: .zero
+                )
+                
+                // Create export session
+                guard let exportSession = AVAssetExportSession(
+                    asset: composition,
+                    presetName: AVAssetExportPresetAppleM4A) else {
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Failed to create export session."
+                            self.isTranscribing = false
+                        }
+                        return
+                }
+                
+                // Configure export
+                exportSession.outputURL = audioURL
+                exportSession.outputFileType = .m4a
+                
+                // Update UI
+                DispatchQueue.main.async {
+                    self.transcriptionText = "Extracting audio..."
+                }
+                
+                // Start the export
+                exportSession.exportAsynchronously {
+                    switch exportSession.status {
+                    case .completed:
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Audio extracted, starting recognition..."
+                            self.performSpeechRecognition(on: audioURL)
+                        }
+                    case .failed:
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Export failed: \(exportSession.error?.localizedDescription ?? "Unknown error")"
+                            self.isTranscribing = false
+                        }
+                    case .cancelled:
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Export cancelled."
+                            self.isTranscribing = false
+                        }
+                    default:
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Export ended with status: \(exportSession.status.rawValue)"
+                            self.isTranscribing = false
+                        }
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.transcriptionText = "Error setting up audio export: \(error.localizedDescription)"
+                    self.isTranscribing = false
+                }
+            }
+        }
     }
+
+    // Helper function to perform speech recognition
+    private func performSpeechRecognition(on audioURL: URL) {
+        // Request authorization first
+        SFSpeechRecognizer.requestAuthorization { status in
+            DispatchQueue.main.async {
+                if status != .authorized {
+                    self.transcriptionText = "Speech recognition not authorized: \(status.rawValue)"
+                    self.isTranscribing = false
+                    return
+                }
+                
+                // Create the recognizer
+                guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR")) else {
+                    self.transcriptionText = "Reconnaissance vocale non disponible pour le français."
+                    self.isTranscribing = false
+                    return
+                }
+                    
+                // Create the recognition request
+                let request = SFSpeechURLRecognitionRequest(url: audioURL)
+                request.shouldReportPartialResults = true
+                
+                // Start recognition
+                let task = recognizer.recognitionTask(with: request) { result, error in
+                    if let error = error {
+                        DispatchQueue.main.async {
+                            self.transcriptionText = "Recognition error: \(error.localizedDescription)"
+                            self.isTranscribing = false
+                        }
+                        return
+                    }
+                    
+                    guard let result = result else { return }
+                    
+                    DispatchQueue.main.async {
+                        // Update with partial results
+                        let transcription = result.bestTranscription.formattedString
+                        self.transcriptionText = transcription
+                        
+                        // If this is the final result, mark as complete
+                        if result.isFinal {
+                            self.isTranscribing = false
+                        }
+                    }
+                }
+                
+                // Store task for potential cancellation if needed
+                self.recognitionTask = task
+            }
+        }
+    }
+
 }
 
 #Preview {

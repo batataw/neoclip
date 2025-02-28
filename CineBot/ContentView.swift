@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var isPlayingSelectedSegments: Bool = false
     @State private var currentSegmentIndex: Int = 0
     @State private var playbackTimer: Timer?
+    @State private var selectedEffect: String = "SANS" // Default effect
 
 
     var body: some View {
@@ -141,6 +142,19 @@ VStack {
             .font(.system(size: 24, weight: .bold))
             .foregroundColor(.green)
     }
+
+    // Add a Picker for selecting the effect
+    Picker("Effet", selection: $selectedEffect) {
+        Text("SANS").tag("SANS")
+        Text("JUMP CUT").tag("JUMP CUT")
+        Text("ZOOM").tag("ZOOM")
+    }
+    .pickerStyle(SegmentedPickerStyle())
+    .padding()
+    .background(Color.green.opacity(0.2)) // Match the transcription banner color
+    .cornerRadius(8)
+    .shadow(color: .gray, radius: 3, x: 0, y: 2)
+    .padding(.horizontal)
     
     if isTranscribing {
         ScrollView {

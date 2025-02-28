@@ -1,0 +1,554 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		A19504F22D71CDE80034A9ED /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A19504D82D71CDE60034A9ED /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A19504DF2D71CDE60034A9ED;
+			remoteInfo = CineBot;
+		};
+		A19504FC2D71CDE80034A9ED /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A19504D82D71CDE60034A9ED /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A19504DF2D71CDE60034A9ED;
+			remoteInfo = CineBot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A19504E02D71CDE60034A9ED /* CineBot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CineBot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A19504F12D71CDE80034A9ED /* CineBotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CineBotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A19504FB2D71CDE80034A9ED /* CineBotUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CineBotUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		A19504E22D71CDE60034A9ED /* CineBot */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CineBot;
+			sourceTree = "<group>";
+		};
+		A19504F42D71CDE80034A9ED /* CineBotTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CineBotTests;
+			sourceTree = "<group>";
+		};
+		A19504FE2D71CDE80034A9ED /* CineBotUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CineBotUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A19504DD2D71CDE60034A9ED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504EE2D71CDE80034A9ED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504F82D71CDE80034A9ED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A19504D72D71CDE60034A9ED = {
+			isa = PBXGroup;
+			children = (
+				A19504E22D71CDE60034A9ED /* CineBot */,
+				A19504F42D71CDE80034A9ED /* CineBotTests */,
+				A19504FE2D71CDE80034A9ED /* CineBotUITests */,
+				A19504E12D71CDE60034A9ED /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A19504E12D71CDE60034A9ED /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A19504E02D71CDE60034A9ED /* CineBot.app */,
+				A19504F12D71CDE80034A9ED /* CineBotTests.xctest */,
+				A19504FB2D71CDE80034A9ED /* CineBotUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A19504DF2D71CDE60034A9ED /* CineBot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A19505052D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBot" */;
+			buildPhases = (
+				A19504DC2D71CDE60034A9ED /* Sources */,
+				A19504DD2D71CDE60034A9ED /* Frameworks */,
+				A19504DE2D71CDE60034A9ED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A19504E22D71CDE60034A9ED /* CineBot */,
+			);
+			name = CineBot;
+			packageProductDependencies = (
+			);
+			productName = CineBot;
+			productReference = A19504E02D71CDE60034A9ED /* CineBot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A19504F02D71CDE80034A9ED /* CineBotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A19505082D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBotTests" */;
+			buildPhases = (
+				A19504ED2D71CDE80034A9ED /* Sources */,
+				A19504EE2D71CDE80034A9ED /* Frameworks */,
+				A19504EF2D71CDE80034A9ED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A19504F32D71CDE80034A9ED /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A19504F42D71CDE80034A9ED /* CineBotTests */,
+			);
+			name = CineBotTests;
+			packageProductDependencies = (
+			);
+			productName = CineBotTests;
+			productReference = A19504F12D71CDE80034A9ED /* CineBotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A19504FA2D71CDE80034A9ED /* CineBotUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A195050B2D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBotUITests" */;
+			buildPhases = (
+				A19504F72D71CDE80034A9ED /* Sources */,
+				A19504F82D71CDE80034A9ED /* Frameworks */,
+				A19504F92D71CDE80034A9ED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A19504FD2D71CDE80034A9ED /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A19504FE2D71CDE80034A9ED /* CineBotUITests */,
+			);
+			name = CineBotUITests;
+			packageProductDependencies = (
+			);
+			productName = CineBotUITests;
+			productReference = A19504FB2D71CDE80034A9ED /* CineBotUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A19504D82D71CDE60034A9ED /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					A19504DF2D71CDE60034A9ED = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					A19504F02D71CDE80034A9ED = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = A19504DF2D71CDE60034A9ED;
+					};
+					A19504FA2D71CDE80034A9ED = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = A19504DF2D71CDE60034A9ED;
+					};
+				};
+			};
+			buildConfigurationList = A19504DB2D71CDE60034A9ED /* Build configuration list for PBXProject "CineBot" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A19504D72D71CDE60034A9ED;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A19504E12D71CDE60034A9ED /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A19504DF2D71CDE60034A9ED /* CineBot */,
+				A19504F02D71CDE80034A9ED /* CineBotTests */,
+				A19504FA2D71CDE80034A9ED /* CineBotUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A19504DE2D71CDE60034A9ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504EF2D71CDE80034A9ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504F92D71CDE80034A9ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A19504DC2D71CDE60034A9ED /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504ED2D71CDE80034A9ED /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A19504F72D71CDE80034A9ED /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A19504F32D71CDE80034A9ED /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A19504DF2D71CDE60034A9ED /* CineBot */;
+			targetProxy = A19504F22D71CDE80034A9ED /* PBXContainerItemProxy */;
+		};
+		A19504FD2D71CDE80034A9ED /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A19504DF2D71CDE60034A9ED /* CineBot */;
+			targetProxy = A19504FC2D71CDE80034A9ED /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A19505032D71CDE80034A9ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A19505042D71CDE80034A9ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		A19505062D71CDE80034A9ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CineBot/CineBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CineBot/Preview Content\"";
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A19505072D71CDE80034A9ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CineBot/CineBot.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"CineBot/Preview Content\"";
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBot;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A19505092D71CDE80034A9ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CineBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CineBot";
+			};
+			name = Debug;
+		};
+		A195050A2D71CDE80034A9ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CineBot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CineBot";
+			};
+			name = Release;
+		};
+		A195050C2D71CDE80034A9ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBotUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CineBot;
+			};
+			name = Debug;
+		};
+		A195050D2D71CDE80034A9ED /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2W2HVVK6M6;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.airswop.cinebot.CineBotUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CineBot;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A19504DB2D71CDE60034A9ED /* Build configuration list for PBXProject "CineBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A19505032D71CDE80034A9ED /* Debug */,
+				A19505042D71CDE80034A9ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A19505052D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A19505062D71CDE80034A9ED /* Debug */,
+				A19505072D71CDE80034A9ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A19505082D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A19505092D71CDE80034A9ED /* Debug */,
+				A195050A2D71CDE80034A9ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A195050B2D71CDE80034A9ED /* Build configuration list for PBXNativeTarget "CineBotUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A195050C2D71CDE80034A9ED /* Debug */,
+				A195050D2D71CDE80034A9ED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A19504D82D71CDE60034A9ED /* Project object */;
+}

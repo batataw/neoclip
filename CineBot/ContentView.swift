@@ -19,8 +19,29 @@ struct TranscriptionSegment: Identifiable {
     var durationAdjustment: Double = 0.0 // Pour suivre l'ajustement de durée
 }
 
+// Structure pour la requête ChatGPT
+struct ChatGPTRequest: Codable {
+    let model: String
+    let messages: [Message]
+    
+    struct Message: Codable {
+        let role: String
+        let content: String
+    }
+}
 
-
+// Structure pour la réponse ChatGPT
+struct ChatGPTResponse: Codable {
+    struct Choice: Codable {
+        let message: Message
+        
+        struct Message: Codable {
+            let content: String
+        }
+    }
+    
+    let choices: [Choice]
+}
 
 struct ContentView: View {
     @State private var player = AVPlayer()
@@ -42,6 +63,10 @@ struct ContentView: View {
     @State private var selectedEffect: String = "SANS" // Default effect
     @State private var originalSegments: [TranscriptionSegment] = [] // Pour sauvegarder les segments originaux
     @State private var isZoomedIn: Bool = false
+    @State private var isCorrectingText: Bool = false // Pour suivre l'état de la correction
+    @StateObject private var chatGPTService = ChatGPTService(apiKey: APIKeys.openAI)
+    @State private var audioURL: URL? = nil
+    @State private var showAudioFileName: Bool = false
 
 
     var body: some View {
@@ -148,7 +173,7 @@ VStack {
             .fill(Color.green.opacity(0.2))
             .frame(height: 60)
         
-        Text("TRANSCRIPTION")
+        Text("MONTAGE")
             .font(.system(size: 24, weight: .bold))
             .foregroundColor(.green)
     }
@@ -291,54 +316,93 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
 }
     Spacer()
     
-    // Ajoutez le bouton de lecture en bas à droite
-        if !transcriptionSegments.isEmpty && !isTranscribing {
-            Spacer()
-            
-            HStack {
-                // Bouton Reset (annuler les fusions) - Maintenant à gauche et en rouge
-                Button(action: {
-                    resetSegments()
-                }) {
-                    Image(systemName: "arrow.counterclockwise.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 10)
-                
-                Spacer() // Ajouté pour pousser les autres boutons vers la droite
-                
-                // Bouton Restart (recommencer la lecture)
-                Button(action: {
-                    restartPlayback()
-                }) {
-                    Image(systemName: "backward.end.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.blue)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 10)
-                
-                // Bouton Play/Pause existant
-                Button(action: {
-                    togglePlaySelectedSegments()
-                }) {
-                    Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.green)
-                }
-                .buttonStyle(PlainButtonStyle())
+    // Modifiez la section des boutons en bas à droite
+    if !transcriptionSegments.isEmpty && !isTranscribing {
+        Spacer()
+        
+        HStack {
+            // Bouton Reset (existant)
+            Button(action: {
+                resetSegments()
+            }) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.red)
             }
-            .padding(12)
-            .background(Color.green.opacity(0.1))
-            .cornerRadius(10)
-            .padding(.bottom, 20)
-            .padding(.trailing, 20)
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 10)
+            
+            Spacer()
+                
+            // Zone d'affichage du fichier audio sélectionné
+            if let audioURL = audioURL {
+                HStack(spacing: 5) {
+                    Text(audioURL.lastPathComponent)
+                        .foregroundColor(.orange)
+                        .lineLimit(1)
+                        .font(.system(size: 14))
+                    
+                    Button(action: {
+                        self.audioURL = nil
+                        showAudioFileName = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.red)
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
+
+            // Bouton Audio
+            Button(action: {
+                if let url = openAudioFileDialog() {
+                    audioURL = url
+                    showAudioFileName = true
+                }
+            }) {
+                Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.orange)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 10)
+
+            // Bouton Restart (existant)
+            Button(action: {
+                restartPlayback()
+            }) {
+                Image(systemName: "backward.end.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 10)
+            
+            // Bouton Play/Pause (existant)
+            Button(action: {
+                togglePlaySelectedSegments()
+            }) {
+                Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.green)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
+        .padding(.horizontal, 20) // Ajout du padding horizontal pour la HStack
+        .padding(.vertical, 12)   // Ajout du padding vertical pour la HStack
+        .background(Color.green.opacity(0.1))
+        .cornerRadius(10)
+        .padding(.bottom, 20)     // Padding du bas pour éviter d'être collé au bord
+        .padding(.horizontal, 20) // Padding horizontal pour éviter d'être collé aux bords
+    }
     
 }
 .frame(maxWidth: .infinity)
@@ -1026,6 +1090,60 @@ private func startPlayingSelectedSegments() {
         
         // Mettre à jour la transcription formatée
         updateFormattedTranscription()
+    }
+
+    // Ajoutez cette fonction pour corriger le texte avec ChatGPT
+    private func correctTranscriptionWithChatGPT() async {
+        guard !transcriptionText.isEmpty else { return }
+        
+        isCorrectingText = true
+        
+        do {
+            let correctedText = try await chatGPTService.correctText(transcriptionText)
+            
+            DispatchQueue.main.async {
+                self.transcriptionText = correctedText
+                self.updateSegmentsWithCorrectedText(correctedText)
+                self.isCorrectingText = false
+            }
+        } catch {
+            DispatchQueue.main.async {
+                // Gérer les erreurs ici
+                print("Erreur de correction : \(error)")
+                self.isCorrectingText = false
+            }
+        }
+    }
+
+    // Ajoutez cette fonction pour mettre à jour les segments avec le texte corrigé
+    private func updateSegmentsWithCorrectedText(_ correctedText: String) {
+        // Diviser le texte corrigé en phrases
+        let phrases = correctedText.components(separatedBy: "\n\n")
+        
+        var currentIndex = 0
+        for phrase in phrases {
+            if currentIndex < transcriptionSegments.count {
+                transcriptionSegments[currentIndex].text = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+                currentIndex += 1
+            }
+        }
+        
+        // Mettre à jour la transcription formatée
+        updateFormattedTranscription()
+    }
+
+    // Ajoutez cette fonction pour gérer le chargement de fichiers audio
+    private func openAudioFileDialog() -> URL? {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [UTType.wav, UTType.mp3, UTType.audio]
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+
+        if openPanel.runModal() == .OK {
+            return openPanel.url
+        }
+        return nil
     }
 }
 

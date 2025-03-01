@@ -67,6 +67,9 @@ struct ContentView: View {
     @StateObject private var chatGPTService = ChatGPTService(apiKey: APIKeys.openAI)
     @State private var audioURL: URL? = nil
     @State private var showAudioFileName: Bool = false
+    @State private var audioPlayer: AVAudioPlayer?
+    @State private var isAudioPlaying: Bool = false
+    @State private var audioVolume: Float = 0.5 // Volume par défaut à 50%
 
 
     var body: some View {
@@ -320,88 +323,112 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
     if !transcriptionSegments.isEmpty && !isTranscribing {
         Spacer()
         
-        HStack {
-            // Bouton Reset (existant)
-            Button(action: {
-                resetSegments()
-            }) {
-                Image(systemName: "arrow.counterclockwise.circle.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(.red)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 10)
-            
-            Spacer()
-                
-            // Zone d'affichage du fichier audio sélectionné
+        VStack(spacing: 10) {
+            // Zone d'affichage du fichier audio sélectionné avec contrôles
             if let audioURL = audioURL {
-                HStack(spacing: 5) {
-                    Text(audioURL.lastPathComponent)
-                        .foregroundColor(.orange)
-                        .lineLimit(1)
-                        .font(.system(size: 14))
-                    
-                    Button(action: {
-                        self.audioURL = nil
-                        showAudioFileName = false
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                            .frame(width: 20, height: 20)
+                VStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Text(audioURL.lastPathComponent)
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                            .font(.system(size: 14))
+                        
+                        Button(action: {
+                            stopAudio()
+                            self.audioURL = nil
+                            showAudioFileName = false
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red)
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .padding(8)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                    
+                    // Contrôle du volume uniquement (sans bouton de lecture)
+                    HStack {
+                        Image(systemName: "speaker.wave.1.fill")
+                            .foregroundColor(.orange)
+                        
+                        Slider(value: $audioVolume, in: 0...1) { editing in
+                            if !editing {
+                                audioPlayer?.volume = audioVolume
+                            }
+                        }
+                        .accentColor(.orange)
+                        .frame(width: 100)
+                        
+                        Image(systemName: "speaker.wave.3.fill")
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.horizontal)
                 }
-                .padding(8)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
             }
 
-            // Bouton Audio
-            Button(action: {
-                if let url = openAudioFileDialog() {
-                    audioURL = url
-                    showAudioFileName = true
+            HStack {
+                // Bouton Reset (existant)
+                Button(action: {
+                    resetSegments()
+                }) {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.red)
                 }
-            }) {
-                Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(.orange)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 10)
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 10)
+                
+                Spacer()
 
-            // Bouton Restart (existant)
-            Button(action: {
-                restartPlayback()
-            }) {
-                Image(systemName: "backward.end.circle.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(.blue)
+                // Bouton Audio
+                Button(action: {
+                    if let url = openAudioFileDialog() {
+                        audioURL = url
+                        showAudioFileName = true
+                        prepareAudioPlayer(url: url)
+                    }
+                }) {
+                    Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.orange)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 10)
+
+                // Bouton Restart (existant)
+                Button(action: {
+                    restartPlayback()
+                }) {
+                    Image(systemName: "backward.end.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 10)
+                
+                // Bouton Play/Pause (existant)
+                Button(action: {
+                    togglePlaySelectedSegments()
+                }) {
+                    Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.horizontal, 10)
-            
-            // Bouton Play/Pause (existant)
-            Button(action: {
-                togglePlaySelectedSegments()
-            }) {
-                Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(.green)
-            }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(10)
         }
-        .padding(.horizontal, 20) // Ajout du padding horizontal pour la HStack
-        .padding(.vertical, 12)   // Ajout du padding vertical pour la HStack
-        .background(Color.green.opacity(0.1))
-        .cornerRadius(10)
-        .padding(.bottom, 20)     // Padding du bas pour éviter d'être collé au bord
-        .padding(.horizontal, 20) // Padding horizontal pour éviter d'être collé aux bords
+        .padding(.bottom, 20)
+        .padding(.horizontal, 20)
     }
     
 }
@@ -417,6 +444,9 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
             player.pause()
             recognitionTask?.cancel()
             recognitionTask = nil
+            
+            // Arrêter et nettoyer l'audio
+            stopAudio()
         }        
         .onAppear {
             addPeriodicTimeObserver()
@@ -896,6 +926,12 @@ private func startPlayingSelectedSegments() {
     // Commencer par le premier segment actif
     playSegment(activeSegments[currentSegmentIndex])
     
+    // Démarrer l'audio si disponible
+    if let player = audioPlayer, !player.isPlaying {
+        player.play()
+        isAudioPlaying = true
+    }
+    
     // Configurer un timer pour gérer le passage d'un segment à l'autre
     playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
         
@@ -1019,6 +1055,12 @@ private func startPlayingSelectedSegments() {
         // Mettre en pause le lecteur
         player.pause()
         isPlaying = false
+        
+        // Mettre en pause l'audio automatiquement
+        if let player = audioPlayer, player.isPlaying {
+            player.pause()
+            isAudioPlaying = false
+        }
     }
     
     // Ajoutez cette fonction dans ContentView
@@ -1067,6 +1109,11 @@ private func startPlayingSelectedSegments() {
         
         // Réinitialiser l'index de lecture
         currentSegmentIndex = 0
+        
+        // Réinitialiser l'audio à sa position de départ si nécessaire
+        if let player = audioPlayer {
+            player.currentTime = 0
+        }
         
         // Démarrer la lecture depuis le début
         isPlayingSelectedSegments = true
@@ -1144,6 +1191,29 @@ private func startPlayingSelectedSegments() {
             return openPanel.url
         }
         return nil
+    }
+
+    // Ajoutez ces nouvelles fonctions pour gérer la lecture audio
+    
+    private func prepareAudioPlayer(url: URL) {
+        do {
+            // Arrêter l'audio précédent s'il existe
+            stopAudio()
+            
+            // Créer un nouveau lecteur audio
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.prepareToPlay()
+            audioPlayer?.volume = audioVolume
+            // Ne pas démarrer la lecture automatiquement
+        } catch {
+            print("Erreur lors de la préparation du lecteur audio: \(error.localizedDescription)")
+        }
+    }
+    
+    private func stopAudio() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        isAudioPlaying = false
     }
 }
 

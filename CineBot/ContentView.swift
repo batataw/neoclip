@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var playbackTimer: Timer?
     @State private var selectedEffect: String = "SANS" // Default effect
     @State private var originalSegments: [TranscriptionSegment] = [] // Pour sauvegarder les segments originaux
+    @State private var isZoomedIn: Bool = false
 
 
     var body: some View {
@@ -295,19 +296,19 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
             Spacer()
             
             HStack {
-                Spacer()
-                
-                // Bouton Reset (annuler les fusions)
+                // Bouton Reset (annuler les fusions) - Maintenant à gauche et en rouge
                 Button(action: {
                     resetSegments()
                 }) {
                     Image(systemName: "arrow.counterclockwise.circle.fill")
                         .resizable()
                         .frame(width: 50, height: 50)
-                        .foregroundColor(.orange)
+                        .foregroundColor(.red)
                 }
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 10)
+                
+                Spacer() // Ajouté pour pousser les autres boutons vers la droite
                 
                 // Bouton Restart (recommencer la lecture)
                 Button(action: {
@@ -858,7 +859,7 @@ private func startPlayingSelectedSegments() {
     }
 }
 
-    // Fonction pour lire un segment spécifique
+    // Modifiez la fonction playSegment comme suit
     private func playSegment(_ segment: TranscriptionSegment) {
         // Aller au début du segment
         let time = CMTime(seconds: segment.startTime, preferredTimescale: 600)
@@ -870,20 +871,59 @@ private func startPlayingSelectedSegments() {
         // Vérifier la durée du segment
         let segmentDuration = segment.endTime - segment.startTime
         
-        // Appliquer l'effet JUMP CUT si sélectionné, si l'index du segment est pair, et si la durée est >= 3s
-        if selectedEffect == "JUMP CUT" && currentSegmentIndex % 2 == 0 && segmentDuration >= 3 {
-            // Appliquer un agrandissement X1.5 et centrer
-            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
+        if selectedEffect == "ZOOM" {
+            // Créer une composition vidéo avec animation de zoom
+            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { [isZoomedIn] request in
                 let source = request.sourceImage
-                let scaleTransform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+                
+                // Calculer le facteur de zoom en fonction du temps
+                let zoomDuration: Double = 0.5 // Durée de l'animation en secondes
+                let maxZoom: Double = 1.5 // Zoom maximum
+                let currentTime = CMTimeGetSeconds(request.compositionTime) - segment.startTime
+                
+                var scale: Double = 1.0
+                if currentTime <= zoomDuration {
+                    if !isZoomedIn {
+                        // Zoom in
+                        scale = 1.0 + (maxZoom - 1.0) * (currentTime / zoomDuration)
+                    } else {
+                        // Zoom out
+                        scale = maxZoom - (maxZoom - 1.0) * (currentTime / zoomDuration)
+                    }
+                } else {
+                    // Maintenir le zoom final
+                    scale = isZoomedIn ? 1.0 : maxZoom
+                }
+                
+                // Appliquer la transformation
+                let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
                 
                 // Calculer la translation pour centrer
-                let translateTransform = CGAffineTransform(translationX: -source.extent.width / 4, y: -source.extent.height / 4)
+                let translateX = (1.0 - scale) * source.extent.width / 2.0
+                let translateY = (1.0 - scale) * source.extent.height / 2.0
+                let translateTransform = CGAffineTransform(translationX: translateX, y: translateY)
                 
-                // Appliquer la transformation combinée
+                // Combiner les transformations
                 let transform = scaleTransform.concatenating(translateTransform)
                 let transformedImage = source.transformed(by: transform)
                 
+                request.finish(with: transformedImage, context: nil)
+            }
+            
+            player.currentItem?.videoComposition = videoComposition
+            
+            // Inverser l'état du zoom pour le prochain segment
+            DispatchQueue.main.async {
+                self.isZoomedIn.toggle()
+            }
+        } else if selectedEffect == "JUMP CUT" && currentSegmentIndex % 2 == 0 && segmentDuration >= 3 {
+            // Code existant pour JUMP CUT
+            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
+                let source = request.sourceImage
+                let scaleTransform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+                let translateTransform = CGAffineTransform(translationX: -source.extent.width / 4, y: -source.extent.height / 4)
+                let transform = scaleTransform.concatenating(translateTransform)
+                let transformedImage = source.transformed(by: transform)
                 request.finish(with: transformedImage, context: nil)
             }
             player.currentItem?.videoComposition = videoComposition

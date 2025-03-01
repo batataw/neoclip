@@ -16,6 +16,7 @@ struct TranscriptionSegment: Identifiable {
     }
     var indexFusion: Int = 0
     var isActive: Bool = true 
+    var durationAdjustment: Double = 0.0 // Pour suivre l'ajustement de durée
 }
 
 
@@ -215,9 +216,36 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             
+                            // Affichage de l'ajustement de durée
+                            if transcriptionSegments[index].durationAdjustment != 0 {
+                                Text(String(format: "%+.1fs", transcriptionSegments[index].durationAdjustment))
+                                    .font(.caption)
+                                    .foregroundColor(transcriptionSegments[index].durationAdjustment > 0 ? .green : .red)
+                                    .padding(.horizontal, 4)
+                            }
+                            
                             Spacer()
                             
-                            // Bouton de fusion (seulement visible si ce n'est pas le premier segment)
+                            // Boutons d'ajustement de durée
+                            Button(action: {
+                                adjustSegmentDuration(index: index, adjustment: -0.5)
+                            }) {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(.horizontal, 2)
+                            
+                            Button(action: {
+                                adjustSegmentDuration(index: index, adjustment: 0.5)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.green)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .padding(.horizontal, 2)
+                            
+                            // Bouton de fusion existant
                             if index > 0 {
                                 Button(action: {
                                     mergeWithPreviousSegment(index)
@@ -229,13 +257,13 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                                 .padding(.horizontal, 4)
                             }
                             
-                            // Bouton d'activation/désactivation
+                            // Bouton d'activation/désactivation existant
                             Button(action: {
                                 transcriptionSegments[index].isActive.toggle()
                                 updateFormattedTranscription()
                             }) {
                                 Image(systemName: transcriptionSegments[index].isActive ? "checkmark.circle.fill" : "circle")
-                                    .foregroundColor(transcriptionSegments[index].isActive ? .green : .gray)
+                                    .foregroundColor(transcriptionSegments[index].isActive ? .blue : .gray)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -909,10 +937,10 @@ private func startPlayingSelectedSegments() {
 
     // Ajoutez ces nouvelles fonctions dans ContentView
     private func resetSegments() {
-        // Restaurer les segments originaux
         transcriptionSegments = originalSegments.map { segment in
             var newSegment = segment
-            newSegment.isActive = true // Réactiver tous les segments
+            newSegment.isActive = true
+            newSegment.durationAdjustment = 0.0 // Réinitialiser l'ajustement de durée
             return newSegment
         }
         updateFormattedTranscription()
@@ -930,6 +958,25 @@ private func startPlayingSelectedSegments() {
         // Démarrer la lecture depuis le début
         isPlayingSelectedSegments = true
         startPlayingSelectedSegments()
+    }
+
+    // Ajoutez cette nouvelle fonction à ContentView
+    private func adjustSegmentDuration(index: Int, adjustment: Double) {
+        guard index < transcriptionSegments.count else { return }
+        
+        // Mettre à jour l'ajustement de durée
+        transcriptionSegments[index].durationAdjustment += adjustment
+        
+        // Ajuster la fin du segment actuel
+        transcriptionSegments[index].endTime += adjustment
+        
+        // Si ce n'est pas le dernier segment, ajuster le début du segment suivant
+        if index < transcriptionSegments.count - 1 {
+            transcriptionSegments[index + 1].startTime += adjustment
+        }
+        
+        // Mettre à jour la transcription formatée
+        updateFormattedTranscription()
     }
 }
 

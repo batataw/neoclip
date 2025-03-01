@@ -6,10 +6,15 @@ import Speech
 
 // Ajout d'une structure pour stocker les segments avec horodatage
 struct TranscriptionSegment: Identifiable {
+    var index: Int
     var id = UUID()
     var text: String
     var startTime: TimeInterval
     var endTime: TimeInterval
+    var duration: TimeInterval {
+        return endTime - startTime
+    }
+    var indexFusion: Int = 0
     var isActive: Bool = true 
 }
 
@@ -34,6 +39,7 @@ struct ContentView: View {
     @State private var currentSegmentIndex: Int = 0
     @State private var playbackTimer: Timer?
     @State private var selectedEffect: String = "SANS" // Default effect
+    @State private var originalSegments: [TranscriptionSegment] = [] // Pour sauvegarder les segments originaux
 
 
     var body: some View {
@@ -189,39 +195,62 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
     Divider()
     
     VStack(alignment: .leading) {
-        
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(transcriptionSegments.indices, id: \.self) { index in
-                    Button(action: {
-                        // Toggle l'état d'activation du segment
-                        transcriptionSegments[index].isActive.toggle()
-                        // Mettre à jour la transcription formatée basée sur les segments actifs
-                        updateFormattedTranscription()
-                    }) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(String(format: "%.1fs - %.1fs", transcriptionSegments[index].startTime, transcriptionSegments[index].endTime))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                // Indicateur visuel de l'état d'activation
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("#\(index + 1)")
+                                .font(.caption)
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(4)
+                            
+                            Text(String(format: "%.1fs - %.1fs (Durée: %.1fs)", 
+                                transcriptionSegments[index].startTime, 
+                                transcriptionSegments[index].endTime,
+                                transcriptionSegments[index].duration))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            // Bouton de fusion (seulement visible si ce n'est pas le premier segment)
+                            if index > 0 {
+                                Button(action: {
+                                    mergeWithPreviousSegment(index)
+                                }) {
+                                    Image(systemName: "arrow.merge")
+                                        .foregroundColor(.orange)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.horizontal, 4)
+                            }
+                            
+                            // Bouton d'activation/désactivation
+                            Button(action: {
+                                transcriptionSegments[index].isActive.toggle()
+                                updateFormattedTranscription()
+                            }) {
                                 Image(systemName: transcriptionSegments[index].isActive ? "checkmark.circle.fill" : "circle")
                                     .foregroundColor(transcriptionSegments[index].isActive ? .green : .gray)
                             }
-                            Text(transcriptionSegments[index].text)
-                                .font(.body)
-                                .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
-                                .lineLimit(nil)
-                                .fixedSize(horizontal: false, vertical: true)
+                            .buttonStyle(PlainButtonStyle())
                         }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(transcriptionSegments[index].isActive ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-                        .cornerRadius(8)
+                        
+                        Text(transcriptionSegments[index].text)
+                            .font(.body)
+                            .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    // Ajouter une fonctionnalité de double-clic pour naviguer au temps du segment
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(transcriptionSegments[index].isActive ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                    // Conserver le double-tap pour la navigation
                     .onTapGesture(count: 2) {
                         navigateToSegment(transcriptionSegments[index])
                     }
@@ -240,24 +269,46 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
             HStack {
                 Spacer()
                 
+                // Bouton Reset (annuler les fusions)
                 Button(action: {
-                    // Lorsque le bouton est cliqué, nous allons lancer la lecture des segments sélectionnés
-                    togglePlaySelectedSegments()
+                    resetSegments()
                 }) {
-                    HStack {
-                        Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
-                            .resizable()
-                            .frame(width: 50, height: 50)
-                            .foregroundColor(.green)                        
-                    }
-                    .padding(12)
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(10)
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.orange)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .padding(.bottom, 20)
-                .padding(.trailing, 20)
+                .padding(.horizontal, 10)
+                
+                // Bouton Restart (recommencer la lecture)
+                Button(action: {
+                    restartPlayback()
+                }) {
+                    Image(systemName: "backward.end.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 10)
+                
+                // Bouton Play/Pause existant
+                Button(action: {
+                    togglePlaySelectedSegments()
+                }) {
+                    Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
+            .padding(12)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(10)
+            .padding(.bottom, 20)
+            .padding(.trailing, 20)
         }
     
 }
@@ -499,8 +550,8 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                 if pauseDuration > longPauseThreshold {
                     // Créer une nouvelle phrase avec le texte accumulé
                     if !currentPhraseText.isEmpty {
-                        let phrase = TranscriptionSegment(
-                            text: currentPhraseText,
+                        var phrase = TranscriptionSegment(
+                            index: 0, text: currentPhraseText,
                             startTime: phraseStartTime,
                             endTime: segments[index-1].endTime
                         )
@@ -522,7 +573,8 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
             
             // Si c'est le dernier segment, on ajoute la phrase en cours
             if index == segments.count - 1 && !currentPhraseText.isEmpty {
-                let phrase = TranscriptionSegment(
+                var phrase = TranscriptionSegment(
+                    index: 0,
                     text: currentPhraseText,
                     startTime: phraseStartTime,
                     endTime: phraseEndTime,
@@ -532,8 +584,39 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
             }
             
         }
+                     
+        for (index,phrase) in phrases.enumerated() {
+            var tmpPhrase = phrase
+            tmpPhrase.index = index + 1
+            phrases[index] = tmpPhrase
+        }
         
         return phrases
+    }
+
+    private func mergeShortSegments(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
+        var mergedSegments = segments // Create a mutable copy
+        var i = mergedSegments.count - 1 // On commence par la fin
+        
+        while i > 0 { // On s'arrête quand on arrive au premier segment
+            // Si le segment actuel est court
+            if mergedSegments[i].duration < 2 {
+                // Fusionner avec le segment précédent
+                mergedSegments[i - 1].endTime = mergedSegments[i].endTime
+                mergedSegments[i - 1].text = mergedSegments[i - 1].text + " " + mergedSegments[i].text
+                
+                // Supprimer le segment actuel
+                mergedSegments.remove(at: i)
+            }
+            i -= 1
+        }
+        
+        // Mettre à jour les index
+        for i in 0..<mergedSegments.count {
+            mergedSegments[i].index = i + 1
+        }
+        
+        return mergedSegments
     }
 
     // Modifiez la fonction performSpeechRecognition pour utiliser les phrases
@@ -583,12 +666,13 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                         // Stocker les segments originaux avec leurs horodatages
                         var rawSegments: [TranscriptionSegment] = []
                         
-                        for segment in segments {
+                        for (index, segment) in segments.enumerated() {
                             let text = segment.substring
                             let startTime = segment.timestamp
                             let duration = segment.duration
                             
                             let newSegment = TranscriptionSegment(
+                                index: index,
                                 text: text,
                                 startTime: startTime,
                                 endTime: startTime + duration
@@ -599,12 +683,18 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                         
                         // Générer les segments de phrases pour l'interface utilisateur
                         self.transcriptionSegments = self.createPhraseSegments(rawSegments)
+
+                        // Fusionner les segments courts
+                        //self.transcriptionSegments = self.mergeShortSegments(self.transcriptionSegments)
                         
                         // Utiliser la fonction existante pour créer la transcription formatée
                         self.formattedTranscription = self.processTranscriptionSegments(rawSegments)
                         
                         // Mettre à jour le texte de transcription
                         self.transcriptionText = self.formattedTranscription
+                        
+                        // Sauvegarder les segments originaux
+                        self.originalSegments = self.transcriptionSegments
                         
                         // Si c'est le résultat final, marquer comme terminé
                         if result.isFinal {
@@ -790,8 +880,57 @@ private func startPlayingSelectedSegments() {
         isPlaying = false
     }
     
-    
+    // Ajoutez cette fonction dans ContentView
+    private func mergeWithPreviousSegment(_ currentIndex: Int) {
+        guard currentIndex > 0 && currentIndex < transcriptionSegments.count else { return }
+        
+        // Fusionner avec le segment précédent
+        var previousSegment = transcriptionSegments[currentIndex - 1]
+        let currentSegment = transcriptionSegments[currentIndex]
+        
+        // Mettre à jour le texte et le temps de fin du segment précédent
+        previousSegment.text = previousSegment.text + " " + currentSegment.text
+        previousSegment.endTime = currentSegment.endTime
+        
+        // Mettre à jour le segment précédent
+        transcriptionSegments[currentIndex - 1] = previousSegment
+        
+        // Supprimer le segment actuel
+        transcriptionSegments.remove(at: currentIndex)
+        
+        // Mettre à jour les index des segments restants
+        for i in 0..<transcriptionSegments.count {
+            transcriptionSegments[i].index = i + 1
+        }
+        
+        // Mettre à jour la transcription formatée
+        updateFormattedTranscription()
+    }
 
+    // Ajoutez ces nouvelles fonctions dans ContentView
+    private func resetSegments() {
+        // Restaurer les segments originaux
+        transcriptionSegments = originalSegments.map { segment in
+            var newSegment = segment
+            newSegment.isActive = true // Réactiver tous les segments
+            return newSegment
+        }
+        updateFormattedTranscription()
+    }
+
+    private func restartPlayback() {
+        // Arrêter la lecture en cours si elle est active
+        if isPlayingSelectedSegments {
+            stopPlayingSelectedSegments()
+        }
+        
+        // Réinitialiser l'index de lecture
+        currentSegmentIndex = 0
+        
+        // Démarrer la lecture depuis le début
+        isPlayingSelectedSegments = true
+        startPlayingSelectedSegments()
+    }
 }
 
 #Preview {

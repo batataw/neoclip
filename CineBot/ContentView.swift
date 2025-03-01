@@ -878,30 +878,39 @@ private func startPlayingSelectedSegments() {
                 
                 // Calculer le facteur de zoom en fonction du temps
                 let zoomDuration: Double = 0.5 // Durée de l'animation en secondes
-                let maxZoom: Double = 1.5 // Zoom maximum
+                let maxZoom: Double = 1.3 // Réduit légèrement le zoom maximum pour éviter les bords noirs
                 let currentTime = CMTimeGetSeconds(request.compositionTime) - segment.startTime
                 
                 var scale: Double = 1.0
                 if currentTime <= zoomDuration {
                     if !isZoomedIn {
-                        // Zoom in
-                        scale = 1.0 + (maxZoom - 1.0) * (currentTime / zoomDuration)
+                        // Zoom in progressif
+                        scale = 1.0 + (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
                     } else {
-                        // Zoom out
-                        scale = maxZoom - (maxZoom - 1.0) * (currentTime / zoomDuration)
+                        // Zoom out progressif
+                        scale = maxZoom - (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
                     }
                 } else {
                     // Maintenir le zoom final
                     scale = isZoomedIn ? 1.0 : maxZoom
                 }
                 
+                // S'assurer que le scale reste dans des limites raisonnables
+                scale = max(1.0, min(maxZoom, scale))
+                
                 // Appliquer la transformation
                 let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
                 
-                // Calculer la translation pour centrer
-                let translateX = (1.0 - scale) * source.extent.width / 2.0
-                let translateY = (1.0 - scale) * source.extent.height / 2.0
-                let translateTransform = CGAffineTransform(translationX: translateX, y: translateY)
+                // Calculer la translation pour centrer avec des limites
+                let translateX = ((1.0 - scale) * source.extent.width) / 2.0
+                let translateY = ((1.0 - scale) * source.extent.height) / 2.0
+                
+                // Limiter la translation pour éviter les bords noirs
+                let maxTranslate = source.extent.width * (scale - 1.0) / 2.0
+                let boundedTranslateX = max(-maxTranslate, min(maxTranslate, translateX))
+                let boundedTranslateY = max(-maxTranslate, min(maxTranslate, translateY))
+                
+                let translateTransform = CGAffineTransform(translationX: boundedTranslateX, y: boundedTranslateY)
                 
                 // Combiner les transformations
                 let transform = scaleTransform.concatenating(translateTransform)

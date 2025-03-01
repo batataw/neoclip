@@ -73,258 +73,368 @@ struct ContentView: View {
 
 
     var body: some View {
-        HStack {
-            // Video Player on the left
-            VStack {
-                // Remplacer le Text simple par une banner
-                ZStack {
-                    Rectangle()
-                        .fill(Color.blue.opacity(0.2))
-                        .frame(height: 60)
-                    
-                    Text("LECTEUR VIDÉO")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.blue)
-                }
-                
-                VideoPlayer(player: player)
-                    .aspectRatio(9/16, contentMode: .fit)
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
-                    .padding()
-
-                // Barre de progression vidéo
-                Slider(value: $currentTime, in: 0...videoDuration, onEditingChanged: { isEditing in
-                    if !isEditing {
-                        let newTime = CMTime(seconds: currentTime, preferredTimescale: 600)
-                        player.seek(to: newTime)
-                    }
-                })
-                .padding()
-                
-                // Boutons de contrôle vidéo alignés à gauche
-                HStack(spacing: 20) {
-                    
-                    Button(action: {
-                        if let fileURL = openFileDialog() {
-                            loadVideo(url: fileURL)
-                        }
-                    }) {
-                        Image(systemName: "folder.fill")
-                            .resizable()
-                            .frame(width: 50, height: 50)
-                            .foregroundColor(.yellow)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Button(action: {
-                        if isPlaying {
-                            player.pause()
-                        } else {
-                            // Réinitialiser la composition vidéo pour revenir à la taille normale
-                            player.currentItem?.videoComposition = nil
-                            player.play()
-                        }
-                        isPlaying.toggle()
-                    }) {
-                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .resizable()
-                            .frame(width: 50, height: 50)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    
-                    Button(action: {
-                        player.pause()
-                        player.seek(to: .zero)
-                        isPlaying = false
-                    }) {
-                        Image(systemName: "stop.circle.fill")
-                            .resizable()
-                            .frame(width: 50, height: 50)
-                            .foregroundColor(.red)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    // New transcription button
-                    Button(action: {
-                        if asset == nil {
-                            showAlert = true
-                        } else {
-                            transcript()
-                        }
-                    }) {
-                        Image(systemName: "text.bubble.fill")
-                            .resizable()
-                            .frame(width: 50, height: 50)
-                            .foregroundColor(.green)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Spacer()
-                }
-                .padding()
+        mainContentView
+            .onDisappear {
+                cleanupResources()
+            }        
+            .onAppear {
+                addPeriodicTimeObserver()
             }
-            .frame(maxWidth: .infinity)
-
-// Zone de transcription à droite
-VStack {
-    // Remplacer le Text simple par une banner
-    ZStack {
-        Rectangle()
-            .fill(Color.green.opacity(0.2))
-            .frame(height: 60)
-        
-        Text("MONTAGE")
-            .font(.system(size: 24, weight: .bold))
-            .foregroundColor(.green)
+            .alert(isPresented: $showAlert) {
+                Alert(title: Text("No Video Loaded"), 
+                      message: Text("Please load a video before starting transcription."), 
+                      dismissButton: .default(Text("OK")))
+            }
     }
-
-    // Add a Picker for selecting the effect
-    Picker("Effet", selection: $selectedEffect) {
-        Text("SANS").tag("SANS")
-        Text("JUMP CUT").tag("JUMP CUT")
-        Text("ZOOM").tag("ZOOM")
-    }
-    .pickerStyle(SegmentedPickerStyle())
-    .padding()
-    .background(Color.green.opacity(0.2)) // Match the transcription banner color
-    .cornerRadius(8)
-    .shadow(color: .gray, radius: 3, x: 0, y: 2)
-    .padding(.horizontal)
     
-    if isTranscribing {
-        ScrollView {
+    // Break up the body into smaller components
+    private var mainContentView: some View {
+        HStack {
+            videoPlayerSection
+            transcriptionSection
+        }
+    }
+    
+    // Video player section
+    private var videoPlayerSection: some View {
+        VStack {
+            videoHeader
+            videoPlayer
+            videoProgressBar
+            videoControlButtons
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // Video header
+    private var videoHeader: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.blue.opacity(0.2))
+                .frame(height: 60)
+            
+            Text("LECTEUR VIDÉO")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.blue)
+        }
+    }
+    
+    // Video player
+    private var videoPlayer: some View {
+        VideoPlayer(player: player)
+            .aspectRatio(9/16, contentMode: .fit)
+            .cornerRadius(10)
+            .shadow(radius: 5)
+            .padding()
+    }
+    
+    // Video progress bar
+    private var videoProgressBar: some View {
+        Slider(value: $currentTime, in: 0...videoDuration, onEditingChanged: { isEditing in
+            if !isEditing {
+                let newTime = CMTime(seconds: currentTime, preferredTimescale: 600)
+                player.seek(to: newTime)
+            }
+        })
+        .padding()
+    }
+    
+    // Video control buttons
+    private var videoControlButtons: some View {
+        HStack(spacing: 20) {
+            openFileButton
+            playPauseButton
+            stopButton
+            transcriptionButton
+            Spacer()
+        }
+        .padding()
+    }
+    
+    private var openFileButton: some View {
+        Button(action: {
+            if let fileURL = openFileDialog() {
+                loadVideo(url: fileURL)
+            }
+        }) {
+            Image(systemName: "folder.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.yellow)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var playPauseButton: some View {
+        Button(action: {
+            if isPlaying {
+                player.pause()
+            } else {
+                // Réinitialiser la composition vidéo pour revenir à la taille normale
+                player.currentItem?.videoComposition = nil
+                player.play()
+            }
+            isPlaying.toggle()
+        }) {
+            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.blue)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var stopButton: some View {
+        Button(action: {
+            player.pause()
+            player.seek(to: .zero)
+            isPlaying = false
+        }) {
+            Image(systemName: "stop.circle.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.red)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var transcriptionButton: some View {
+        Button(action: {
+            if asset == nil {
+                showAlert = true
+            } else {
+                transcript()
+            }
+        }) {
+            Image(systemName: "text.bubble.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.green)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    // Transcription section
+    private var transcriptionSection: some View {
+        VStack {
+            transcriptionHeader
+            effectSelector
+            transcriptionContent
+            Spacer()
+            if !transcriptionSegments.isEmpty && !isTranscribing {
+                Spacer()
+                controlButtonsSection
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color.gray.opacity(0.1))
+    }
+    
+    // Transcription header
+    private var transcriptionHeader: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.green.opacity(0.2))
+                .frame(height: 60)
+            
+            Text("MONTAGE")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.green)
+        }
+    }
+    
+    // Effect selector
+    private var effectSelector: some View {
+        Picker("Effet", selection: $selectedEffect) {
+            Text("SANS").tag("SANS")
+            Text("JUMP CUT").tag("JUMP CUT")
+            Text("ZOOM").tag("ZOOM")
+        }
+        .pickerStyle(SegmentedPickerStyle())
+        .padding()
+        .background(Color.green.opacity(0.2))
+        .cornerRadius(8)
+        .shadow(color: .gray, radius: 3, x: 0, y: 2)
+        .padding(.horizontal)
+    }
+    
+    // Transcription content
+    private var transcriptionContent: some View {
+        Group {
             if isTranscribing {
-                VStack {
-                    ProgressView()
-                        .padding()
-                    Text(transcriptionText)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineSpacing(5) // Améliore la lisibilité des lignes
-                }
+                transcribingView
+            } else if !transcriptionSegments.isEmpty {
+                segmentsListView
             } else if !transcriptionText.isEmpty {
-                // Texte formaté avec les sauts de ligne et la ponctuation
+                formattedTextView
+            } else {
+                emptyTranscriptionView
+            }
+        }
+    }
+    
+    private var transcribingView: some View {
+        ScrollView {
+            VStack {
+                ProgressView()
+                    .padding()
                 Text(transcriptionText)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineSpacing(5)
-            } else {
-                Text("Pas encore de transcription disponible. Cliquez sur le bouton de transcription pour commencer.")
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding()
     }
     
-// Modifiez la partie affichant les segments dans l'interface utilisateur
-if !transcriptionSegments.isEmpty && !isTranscribing {
-    Divider()
+    private var formattedTextView: some View {
+        ScrollView {
+            Text(transcriptionText)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineSpacing(5)
+        }
+        .padding()
+    }
     
-    VStack(alignment: .leading) {
+    private var emptyTranscriptionView: some View {
+        Text("Pas encore de transcription disponible. Cliquez sur le bouton de transcription pour commencer.")
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    private var segmentsListView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(transcriptionSegments.indices, id: \.self) { index in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("#\(index + 1)")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(4)
-                            
-                            Text(String(format: "%.1fs - %.1fs (Durée: %.1fs)", 
-                                transcriptionSegments[index].startTime, 
-                                transcriptionSegments[index].endTime,
-                                transcriptionSegments[index].duration))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            // Affichage de l'ajustement de durée
-                            if transcriptionSegments[index].durationAdjustment != 0 {
-                                Text(String(format: "%+.1fs", transcriptionSegments[index].durationAdjustment))
-                                    .font(.caption)
-                                    .foregroundColor(transcriptionSegments[index].durationAdjustment > 0 ? .green : .red)
-                                    .padding(.horizontal, 4)
-                            }
-                            
-                            Spacer()
-                            
-                            // Boutons d'ajustement de durée
-                            Button(action: {
-                                adjustSegmentDuration(index: index, adjustment: -0.5)
-                            }) {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .padding(.horizontal, 2)
-                            
-                            Button(action: {
-                                adjustSegmentDuration(index: index, adjustment: 0.5)
-                            }) {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.green)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .padding(.horizontal, 2)
-                            
-                            // Bouton de fusion existant
-                            if index > 0 {
-                                Button(action: {
-                                    mergeWithPreviousSegment(index)
-                                }) {
-                                    Image(systemName: "arrow.merge")
-                                        .foregroundColor(.orange)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .padding(.horizontal, 4)
-                            }
-                            
-                            // Bouton d'activation/désactivation existant
-                            Button(action: {
-                                transcriptionSegments[index].isActive.toggle()
-                                updateFormattedTranscription()
-                            }) {
-                                Image(systemName: transcriptionSegments[index].isActive ? "checkmark.circle.fill" : "circle")
-                                    .foregroundColor(transcriptionSegments[index].isActive ? .blue : .gray)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                        
-                        Text(transcriptionSegments[index].text)
-                            .font(.body)
-                            .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(transcriptionSegments[index].isActive ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-                    // Conserver le double-tap pour la navigation
-                    .onTapGesture(count: 2) {
-                        navigateToSegment(transcriptionSegments[index])
-                    }
+                    segmentView(for: index)
                 }
             }
             .padding()
         }
     }
-}
-    Spacer()
     
-    // Modifiez la section des boutons en bas à droite
-    if !transcriptionSegments.isEmpty && !isTranscribing {
-        Spacer()
-        
+    private func segmentView(for index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            segmentHeader(for: index)
+            segmentText(for: index)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(transcriptionSegments[index].isActive ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
+        .cornerRadius(8)
+        .onTapGesture(count: 2) {
+            navigateToSegment(transcriptionSegments[index])
+        }
+    }
+    
+    private func segmentHeader(for index: Int) -> some View {
+        HStack {
+            Text("#\(index + 1)")
+                .font(.caption)
+                .foregroundColor(.blue)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(4)
+            
+            Text(String(format: "%.1fs - %.1fs (Durée: %.1fs)", 
+                  transcriptionSegments[index].startTime, 
+                  transcriptionSegments[index].endTime,
+                  transcriptionSegments[index].duration))
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            // Affichage de l'ajustement de durée
+            if transcriptionSegments[index].durationAdjustment != 0 {
+                Text(String(format: "%+.1fs", transcriptionSegments[index].durationAdjustment))
+                    .font(.caption)
+                    .foregroundColor(transcriptionSegments[index].durationAdjustment > 0 ? .green : .red)
+                    .padding(.horizontal, 4)
+            }
+            
+            Spacer()
+            
+            segmentControlButtons(for: index)
+        }
+    }
+    
+    private func segmentControlButtons(for index: Int) -> some View {
+        HStack(spacing: 2) {
+            // Boutons d'ajustement de durée
+            Button(action: {
+                adjustSegmentDuration(index: index, adjustment: -0.5)
+            }) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 2)
+            
+            Button(action: {
+                adjustSegmentDuration(index: index, adjustment: 0.5)
+            }) {
+                Image(systemName: "plus.circle.fill")
+                    .foregroundColor(.green)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 2)
+            
+            // Bouton de fusion existant
+            if index > 0 {
+                Button(action: {
+                    mergeWithPreviousSegment(index)
+                }) {
+                    Image(systemName: "arrow.merge")
+                        .foregroundColor(.orange)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 4)
+            }
+            
+            // Bouton d'activation/désactivation existant
+            Button(action: {
+                transcriptionSegments[index].isActive.toggle()
+                updateFormattedTranscription()
+            }) {
+                Image(systemName: transcriptionSegments[index].isActive ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(transcriptionSegments[index].isActive ? .blue : .gray)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+    
+    private func segmentText(for index: Int) -> some View {
+        Text(transcriptionSegments[index].text)
+            .font(.body)
+            .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+    
+    // Control buttons section
+    private var controlButtonsSection: some View {
         VStack(spacing: 10) {
-            // Zone d'affichage du fichier audio sélectionné avec contrôles
+            audioFileSection
+            
+            HStack {
+                resetButton
+                Spacer()
+                audioButton
+                restartButton
+                playPauseSegmentsButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(10)
+        }
+        .padding(.bottom, 20)
+        .padding(.horizontal, 20)
+    }
+    
+    private var audioFileSection: some View {
+        Group {
             if let audioURL = audioURL {
                 VStack(spacing: 8) {
                     HStack(spacing: 5) {
@@ -348,7 +458,7 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                     .background(Color.orange.opacity(0.1))
                     .cornerRadius(8)
                     
-                    // Contrôle du volume uniquement (sans bouton de lecture)
+                    // Contrôle du volume uniquement
                     HStack {
                         Image(systemName: "speaker.wave.1.fill")
                             .foregroundColor(.orange)
@@ -366,94 +476,80 @@ if !transcriptionSegments.isEmpty && !isTranscribing {
                     }
                     .padding(.horizontal)
                 }
+            } else {
+                EmptyView()
             }
-
-            HStack {
-                // Bouton Reset (existant)
-                Button(action: {
-                    resetSegments()
-                }) {
-                    Image(systemName: "arrow.counterclockwise.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 10)
-                
-                Spacer()
-
-                // Bouton Audio
-                Button(action: {
-                    if let url = openAudioFileDialog() {
-                        audioURL = url
-                        showAudioFileName = true
-                        prepareAudioPlayer(url: url)
-                    }
-                }) {
-                    Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.orange)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 10)
-
-                // Bouton Restart (existant)
-                Button(action: {
-                    restartPlayback()
-                }) {
-                    Image(systemName: "backward.end.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.blue)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 10)
-                
-                // Bouton Play/Pause (existant)
-                Button(action: {
-                    togglePlaySelectedSegments()
-                }) {
-                    Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
-                        .resizable()
-                        .frame(width: 50, height: 50)
-                        .foregroundColor(.green)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Color.green.opacity(0.1))
-            .cornerRadius(10)
         }
-        .padding(.bottom, 20)
-        .padding(.horizontal, 20)
     }
     
-}
-.frame(maxWidth: .infinity)
-.background(Color.gray.opacity(0.1))
+    private var resetButton: some View {
+        Button(action: {
+            resetSegments()
+        }) {
+            Image(systemName: "arrow.counterclockwise.circle.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.red)
         }
-        .onDisappear {
-            // Invalider le timer quand la vue disparaît
-            playbackTimer?.invalidate()
-            playbackTimer = nil
-            
-            // Nettoyer d'autres ressources si nécessaire
-            player.pause()
-            recognitionTask?.cancel()
-            recognitionTask = nil
-            
-            // Arrêter et nettoyer l'audio
-            stopAudio()
-        }        
-        .onAppear {
-            addPeriodicTimeObserver()
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 10)
+    }
+    
+    private var audioButton: some View {
+        Button(action: {
+            if let url = openAudioFileDialog() {
+                audioURL = url
+                showAudioFileName = true
+                prepareAudioPlayer(url: url)
+            }
+        }) {
+            Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.orange)
         }
-        .alert(isPresented: $showAlert) {
-            Alert(title: Text("No Video Loaded"), message: Text("Please load a video before starting transcription."), dismissButton: .default(Text("OK")))
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 10)
+    }
+    
+    private var restartButton: some View {
+        Button(action: {
+            restartPlayback()
+        }) {
+            Image(systemName: "backward.end.circle.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.blue)
         }
+        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 10)
+    }
+    
+    private var playPauseSegmentsButton: some View {
+        Button(action: {
+            togglePlaySelectedSegments()
+        }) {
+            Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                .resizable()
+                .frame(width: 50, height: 50)
+                .foregroundColor(.green)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    // Clean up resources
+    private func cleanupResources() {
+        // Invalider le timer quand la vue disparaît
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        
+        // Nettoyer d'autres ressources si nécessaire
+        player.pause()
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        
+        // Arrêter et nettoyer l'audio
+        stopAudio()
     }
     
     // Charger la vidéo

@@ -632,9 +632,12 @@ struct ContentView: View {
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(4)
 
+            // Ajout du nombre de mots et de caractères
             Text(
                 String(
-                    format: "%.1fs - %.1fs (Durée: %.1fs)",
+                    format: "%d mots, %d car. | %.1fs - %.1fs (Durée: %.1fs)",
+                    transcriptionSegments[index].text.split(separator: " ").count,
+                    transcriptionSegments[index].text.count,
                     transcriptionSegments[index].startTime,
                     transcriptionSegments[index].endTime,
                     transcriptionSegments[index].duration)
@@ -1261,57 +1264,48 @@ struct ContentView: View {
         var formattedText = ""
         var lastEndTime: TimeInterval = 0
 
-        // Configuration des seuils de pause
-        let longPauseThreshold: TimeInterval = 0.7  // Réduit de 0.7 à 0.4 seconde
-        let mediumPauseThreshold: TimeInterval = 0.3  // Réduit de 0.3 à 0.2 seconde
+        let longPauseThreshold: TimeInterval = 0.7
+        let mediumPauseThreshold: TimeInterval = 0.3
 
         for (index, segment) in segments.enumerated() {
             let text = segment.text
+            var newText = text
 
             if index > 0 {
-                // Calculer le temps entre ce segment et le précédent
                 let pauseDuration = segment.startTime - lastEndTime
 
-                // Si la pause est suffisamment longue, ajouter une ponctuation
-                if pauseDuration > longPauseThreshold {  // Seuil réduit pour une pause significative
-                    // Vérifier si le dernier caractère est déjà une ponctuation
-                    let lastChar = formattedText.last
-
-                    if lastChar != "." && lastChar != "," && lastChar != "?" && lastChar != "!" {
-                        // Ajouter un point et une nouvelle ligne
-                        formattedText += ".\n\n"
-                    } else if lastChar != "\n" {
-                        // Ajouter juste une nouvelle ligne
-                        formattedText += "\n\n"
+                if pauseDuration > longPauseThreshold {
+                    if !formattedText.hasSuffix(".") && !formattedText.hasSuffix("!")
+                        && !formattedText.hasSuffix("?") && !formattedText.hasSuffix("\n")
+                    {
+                        formattedText += "."
                     }
-                } else if pauseDuration > mediumPauseThreshold {  // Seuil réduit pour une pause moyenne
-                    // Ajouter une virgule si ce n'est pas déjà fait
-                    let lastChar = formattedText.last
 
-                    if lastChar != "," && lastChar != "." && lastChar != "?" && lastChar != "!" {
-                        formattedText += ", "
-                    } else {
-                        formattedText += " "
+                    formattedText += "\n\n"
+                } else if pauseDuration > mediumPauseThreshold {
+                    if !formattedText.hasSuffix(",") && !formattedText.hasSuffix(".")
+                        && !formattedText.hasSuffix("!") && !formattedText.hasSuffix("?")
+                    {
+                        formattedText += ","
                     }
+                    formattedText += " "
                 } else {
-                    // Juste un espace
                     if !formattedText.hasSuffix(" ") {
                         formattedText += " "
                     }
                 }
             }
 
-            // Ajouter le texte du segment (capitalisé si c'est après un point)
-            if index == 0 || (formattedText.last == "\n" || formattedText.hasSuffix(". ")) {
-                formattedText += text.prefix(1).uppercased() + text.dropFirst()
-            } else {
-                formattedText += text
+            // Ajouter le texte capitalisé si c'est le début d'une phrase
+            if index == 0 || formattedText.hasSuffix("\n\n") {
+                newText = text.prefix(1).uppercased() + text.dropFirst()
             }
 
+            formattedText += newText
             lastEndTime = segment.endTime
         }
 
-        // Assurer qu'il y a un point final
+        // Assurer une terminaison correcte
         if !formattedText.isEmpty && !".!?".contains(formattedText.last!) {
             formattedText += "."
         }

@@ -1922,9 +1922,9 @@ struct ContentView: View {
 
                 \(transcriptionText)
 
-                Génère un titre provocateur très court, une description engageante et des hashtags pertinents pour cette vidéo.
+                Génère un titre putaclic très court, une description engageante et des hashtags pertinents pour cette vidéo.
                 Format:
-                TITRE: [titre accrocheur]
+                TITRE: [titre putaclic]
                 DESCRIPTION: [description engageante de 2-3 phrases]
                 HASHTAGS: [5-7 hashtags pertinents]
                 """

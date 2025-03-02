@@ -141,18 +141,46 @@ struct ContentView: View {
     
     // Video control buttons
     private var videoControlButtons: some View {
-        HStack(spacing: 20) {
-            openFileButton
-            playPauseButton
-            stopButton
-            Spacer()
-            transcriptionButton            
+        VStack(spacing: 10) {
+            HStack(spacing: 20) {
+                openFileButton
+                playPauseButton
+                stopButton
+                Spacer()
+                transcriptionButton            
+            }
+            .padding()
+            .background(Color.blue.opacity(0.2))
+            .cornerRadius(10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
-        .padding()
-        .background(Color.blue.opacity(0.2))
-        .cornerRadius(10)
-        .padding(.horizontal)
+        .padding(.bottom, 20)
+        .padding(.horizontal, 20)        
     }
+
+
+    // Control buttons section
+    private var controlButtonsSection: some View {
+        VStack(spacing: 10) {
+            audioFileSection
+            
+            HStack {
+                resetButton
+                Spacer()
+                audioButton
+                restartButton
+                playPauseSegmentsButton
+            }
+            .padding()
+            .background(Color.green.opacity(0.2))  // Fond vert pour correspondre au thème de la section Montage
+            .cornerRadius(10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .padding(.bottom, 20)
+        .padding(.horizontal, 20)
+    }    
     
     private var openFileButton: some View {
         Button(action: {
@@ -419,26 +447,7 @@ struct ContentView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
     
-    // Control buttons section
-    private var controlButtonsSection: some View {
-        VStack(spacing: 10) {
-            audioFileSection
-            
-            HStack {
-                resetButton
-                Spacer()
-                audioButton
-                restartButton
-                playPauseSegmentsButton
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Color.green.opacity(0.1))
-            .cornerRadius(10)
-        }
-        .padding(.bottom, 20)
-        .padding(.horizontal, 20)
-    }
+
     
     private var audioFileSection: some View {
         Group {

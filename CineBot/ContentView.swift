@@ -441,16 +441,32 @@ struct ContentView: View {
     // Video player
     private var videoPlayer: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .top) {
+            ZStack(alignment: .center) {
+                // Conteneur pour la vidéo avec ratio 9/16
                 VideoPlayer(player: player)
                     .aspectRatio(9 / 16, contentMode: .fit)
                     .cornerRadius(10)
                     .shadow(radius: 5)
-                
-                // Superposition du titre si activée et selon la durée choisie
-                if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
-                    titleOverlayView(containerWidth: geometry.size.width)
-                }
+                    .overlay(
+                        // Superposition du titre si activée et selon la durée choisie
+                        Group {
+                            if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
+                                GeometryReader { overlayGeometry in
+                                    // Calculer la taille réelle de la vidéo (en respectant le ratio 9/16)
+                                    let videoHeight = overlayGeometry.size.width * (16/9)
+                                    
+                                    titleOverlayView(containerWidth: overlayGeometry.size.width)
+                                        .frame(width: overlayGeometry.size.width)
+                                        .position(
+                                            x: overlayGeometry.size.width / 2,
+                                            y: videoHeight * 0.15 // Positionner à 15% du haut
+                                        )
+                                }
+                                .aspectRatio(9/16, contentMode: .fit)
+                                .allowsHitTesting(false) // Pour que les interactions passent à travers
+                            }
+                        }
+                    )
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -473,32 +489,47 @@ struct ContentView: View {
 
     // Vue du titre superposé avec la largeur du conteneur
     private func titleOverlayView(containerWidth: CGFloat) -> some View {
-        // Calculer la largeur réelle de la vidéo
-        let videoWidth = min(containerWidth, containerWidth / (16/9))
-        // Calculer la largeur maximale du titre (80% de la largeur de la vidéo)
-        let titleMaxWidth = videoWidth * 0.8
+        // Calculer la largeur réelle de la vidéo (en respectant le ratio 9/16)
+        let videoWidth = min(containerWidth, containerWidth)
         
-        return VStack {
-            Text(videoTitle)
-                .font(Font.custom(titleFontName == "System" ? ".AppleSystemUIFont" : titleFontName, size: CGFloat(titleFontSize)))
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding()
-                .frame(maxWidth: titleMaxWidth)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(titleBackgroundColor.opacity(0.8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white, lineWidth: CGFloat(titleBorderWidth))
-                        )
-                )
-                .padding(.top, 20) // Espace en haut pour ne pas être trop proche du bord supérieur
-        }
-        .frame(maxWidth: .infinity)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.5), value: shouldShowTitleOverlay)
+        // Calculer le facteur d'échelle basé sur la largeur du conteneur
+        // Utiliser une largeur de référence de 500 points
+        let scaleFactor = max(0.5, min(1.2, videoWidth / 500))
+        
+        // Augmenter le facteur d'échelle de 20%
+        let enhancedScaleFactor = scaleFactor * 1.2
+        
+        // Calculer la largeur maximale du titre (70% de la largeur du conteneur pour un cadre plus grand)
+        let titleMaxWidth = videoWidth * 0.7
+        
+        // Calculer la taille de police responsive avec un minimum et un maximum
+        let baseFontSize = CGFloat(titleFontSize)
+        let responsiveFontSize = max(16, min(baseFontSize * 1.8, baseFontSize * enhancedScaleFactor))
+        
+        // Calculer l'épaisseur de bordure responsive (avec un minimum pour assurer la visibilité)
+        let responsiveBorderWidth = max(1, min(6, CGFloat(titleBorderWidth) * enhancedScaleFactor))
+        
+        return Text(videoTitle)
+            .font(Font.custom(titleFontName == "System" ? ".AppleSystemUIFont" : titleFontName, size: responsiveFontSize))
+            .fontWeight(.bold)
+            .foregroundColor(.white)
+            .multilineTextAlignment(.center)
+            .lineLimit(3)
+            .minimumScaleFactor(0.7) // Permet à la police de réduire légèrement si nécessaire
+            .padding(.horizontal, max(10, 14 * enhancedScaleFactor))
+            .padding(.vertical, max(8, 10 * enhancedScaleFactor))
+            .frame(maxWidth: titleMaxWidth)
+            .background(
+                RoundedRectangle(cornerRadius: max(6, 10 * enhancedScaleFactor))
+                    .fill(titleBackgroundColor.opacity(0.8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: max(6, 10 * enhancedScaleFactor))
+                            .stroke(Color.white, lineWidth: responsiveBorderWidth)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.5), radius: max(2, 4 * enhancedScaleFactor), x: 0, y: max(1, 2 * enhancedScaleFactor))
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.5), value: shouldShowTitleOverlay)
     }
 
     // Video progress bar

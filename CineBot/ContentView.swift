@@ -70,6 +70,8 @@ struct ContentView: View {
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isAudioPlaying: Bool = false
     @State private var audioVolume: Float = 0.5 // Volume par défaut à 50%
+    @State private var currentScaleFactor: CGFloat = 1.0 // Pour suivre le facteur d'échelle actuel
+    @State private var randomGenerator = SystemRandomNumberGenerator()
 
 
     var body: some View {
@@ -308,6 +310,7 @@ struct ContentView: View {
             Text("SANS").tag("SANS")
             Text("JUMP CUT").tag("JUMP CUT")
             Text("ZOOM").tag("ZOOM")
+            Text("MIX").tag("MIX")
         }
         .pickerStyle(SegmentedPickerStyle())
         .padding()
@@ -1132,70 +1135,43 @@ private func startPlayingSelectedSegments() {
         let segmentDuration = segment.endTime - segment.startTime
         
         if selectedEffect == "ZOOM" {
-            // Créer une composition vidéo avec animation de zoom
-            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { [isZoomedIn] request in
-                let source = request.sourceImage
-                
-                // Calculer le facteur de zoom en fonction du temps
-                let zoomDuration: Double = 0.5 // Durée de l'animation en secondes
-                let maxZoom: Double = 1.3 // Réduit légèrement le zoom maximum pour éviter les bords noirs
-                let currentTime = CMTimeGetSeconds(request.compositionTime) - segment.startTime
-                
-                var scale: Double = 1.0
-                if currentTime <= zoomDuration {
-                    if !isZoomedIn {
-                        // Zoom in progressif
-                        scale = 1.0 + (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
-                    } else {
-                        // Zoom out progressif
-                        scale = maxZoom - (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
-                    }
-                } else {
-                    // Maintenir le zoom final
-                    scale = isZoomedIn ? 1.0 : maxZoom
-                }
-                
-                // S'assurer que le scale reste dans des limites raisonnables
-                scale = max(1.0, min(maxZoom, scale))
-                
-                // Appliquer la transformation
-                let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
-                
-                // Calculer la translation pour centrer avec des limites
-                let translateX = ((1.0 - scale) * source.extent.width) / 2.0
-                let translateY = ((1.0 - scale) * source.extent.height) / 2.0
-                
-                // Limiter la translation pour éviter les bords noirs
-                let maxTranslate = source.extent.width * (scale - 1.0) / 2.0
-                let boundedTranslateX = max(-maxTranslate, min(maxTranslate, translateX))
-                let boundedTranslateY = max(-maxTranslate, min(maxTranslate, translateY))
-                
-                let translateTransform = CGAffineTransform(translationX: boundedTranslateX, y: boundedTranslateY)
-                
-                // Combiner les transformations
-                let transform = scaleTransform.concatenating(translateTransform)
-                let transformedImage = source.transformed(by: transform)
-                
-                request.finish(with: transformedImage, context: nil)
-            }
-            
-            player.currentItem?.videoComposition = videoComposition
-            
-            // Inverser l'état du zoom pour le prochain segment
-            DispatchQueue.main.async {
-                self.isZoomedIn.toggle()
-            }
+            applyZoomEffect(segment: segment)
         } else if selectedEffect == "JUMP CUT" && currentSegmentIndex % 2 == 0 && segmentDuration >= 3 {
-            // Code existant pour JUMP CUT
-            let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
-                let source = request.sourceImage
-                let scaleTransform = CGAffineTransform(scaleX: 1.5, y: 1.5)
-                let translateTransform = CGAffineTransform(translationX: -source.extent.width / 4, y: -source.extent.height / 4)
-                let transform = scaleTransform.concatenating(translateTransform)
-                let transformedImage = source.transformed(by: transform)
-                request.finish(with: transformedImage, context: nil)
+            applyJumpCutEffect()
+        } else if selectedEffect == "MIX" {
+            // Pour l'effet MIX, on alterne entre différents effets de manière aléatoire
+            if isZoomedIn {
+                // Si on est en plan serré, on passe à un plan large
+                // Choisir aléatoirement entre revenir au plan normal ou appliquer un autre effet de dézoom
+                let randomChoice = Int.random(in: 0...1, using: &randomGenerator)
+                
+                if randomChoice == 0 {
+                    // Revenir au plan normal (sans effet)
+                    player.currentItem?.videoComposition = nil
+                    currentScaleFactor = 1.0
+                    isZoomedIn = false
+                } else {
+                    // Appliquer un effet de dézoom personnalisé (si la durée est suffisante)
+                    if segmentDuration >= 2 {
+                        applyCustomDeZoomEffect(segment: segment)
+                    } else {
+                        // Si le segment est trop court, revenir au plan normal
+                        player.currentItem?.videoComposition = nil
+                        currentScaleFactor = 1.0
+                        isZoomedIn = false
+                    }
+                }
+            } else {
+                // Si on est en plan large, on passe à un plan serré
+                // Choisir aléatoirement entre zoom et jump cut
+                let randomChoice = Int.random(in: 0...1, using: &randomGenerator)
+                
+                if randomChoice == 0 {
+                    applyZoomEffect(segment: segment)
+                } else {
+                    applyJumpCutEffect()
+                }
             }
-            player.currentItem?.videoComposition = videoComposition
         }
         
         // Lancer la lecture
@@ -1374,6 +1350,138 @@ private func startPlayingSelectedSegments() {
         audioPlayer?.stop()
         audioPlayer = nil
         isAudioPlaying = false
+    }
+
+    // Ajoutez ces nouvelles fonctions pour séparer la logique des effets
+    private func applyZoomEffect(segment: TranscriptionSegment) {
+        // Créer une composition vidéo avec animation de zoom
+        let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { [isZoomedIn] request in
+            let source = request.sourceImage
+            
+            // Calculer le facteur de zoom en fonction du temps
+            let zoomDuration: Double = 0.5 // Durée de l'animation en secondes
+            let maxZoom: Double = 1.3 // Zoom maximum pour éviter les bords noirs
+            let currentTime = CMTimeGetSeconds(request.compositionTime) - segment.startTime
+            
+            var scale: Double = 1.0
+            if currentTime <= zoomDuration {
+                if !isZoomedIn {
+                    // Zoom in progressif
+                    scale = 1.0 + (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
+                } else {
+                    // Zoom out progressif
+                    scale = maxZoom - (maxZoom - 1.0) * min(1.0, (currentTime / zoomDuration))
+                }
+            } else {
+                // Maintenir le zoom final
+                scale = isZoomedIn ? 1.0 : maxZoom
+            }
+            
+            // S'assurer que le scale reste dans des limites raisonnables
+            scale = max(1.0, min(maxZoom, scale))
+            
+            // Appliquer la transformation
+            let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
+            
+            // Calculer la translation pour centrer avec des limites
+            let translateX = ((1.0 - scale) * source.extent.width) / 2.0
+            let translateY = ((1.0 - scale) * source.extent.height) / 2.0
+            
+            // Limiter la translation pour éviter les bords noirs
+            let maxTranslate = source.extent.width * (scale - 1.0) / 2.0
+            let boundedTranslateX = max(-maxTranslate, min(maxTranslate, translateX))
+            let boundedTranslateY = max(-maxTranslate, min(maxTranslate, translateY))
+            
+            let translateTransform = CGAffineTransform(translationX: boundedTranslateX, y: boundedTranslateY)
+            
+            // Combiner les transformations
+            let transform = scaleTransform.concatenating(translateTransform)
+            let transformedImage = source.transformed(by: transform)
+            
+            request.finish(with: transformedImage, context: nil)
+        }
+        
+        player.currentItem?.videoComposition = videoComposition
+        
+        // Inverser l'état du zoom pour le prochain segment
+        DispatchQueue.main.async {
+            self.isZoomedIn.toggle()
+        }
+    }
+
+    private func applyJumpCutEffect(zoomOut: Bool = false) {
+        let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
+            let source = request.sourceImage
+            
+            // Utiliser un facteur d'échelle fixe pour le zoom in
+            let scaleFactor: CGFloat = 1.5
+            
+            // Calculer les transformations
+            let scaleTransform = CGAffineTransform(scaleX: scaleFactor, y: scaleFactor)
+            
+            // Pour le zoom in, on utilise une translation négative fixe
+            let translateX = -source.extent.width / 4
+            let translateY = -source.extent.height / 4
+            
+            let translateTransform = CGAffineTransform(translationX: translateX, y: translateY)
+            let transform = scaleTransform.concatenating(translateTransform)
+            let transformedImage = source.transformed(by: transform)
+            
+            request.finish(with: transformedImage, context: nil)
+        }
+        
+        player.currentItem?.videoComposition = videoComposition
+        
+        // Mettre à jour l'état du zoom et le facteur d'échelle actuel
+        DispatchQueue.main.async {
+            self.isZoomedIn = true
+            self.currentScaleFactor = 1.5
+        }
+    }
+
+    // Ajoutez cette nouvelle fonction pour un effet de dézoom personnalisé
+    private func applyCustomDeZoomEffect(segment: TranscriptionSegment) {
+        // Créer une composition vidéo avec animation de dézoom
+        let videoComposition = AVVideoComposition(asset: player.currentItem!.asset) { request in
+            let source = request.sourceImage
+            
+            // Calculer le facteur de zoom en fonction du temps
+            let zoomDuration: Double = 0.5 // Durée de l'animation en secondes
+            let startZoom: Double = 1.3 // Commencer avec un zoom
+            let endZoom: Double = 1.0 // Terminer sans zoom
+            let currentTime = CMTimeGetSeconds(request.compositionTime) - segment.startTime
+            
+            // Calculer le facteur de zoom actuel
+            var scale: Double = startZoom
+            if currentTime <= zoomDuration {
+                // Dézoom progressif
+                scale = startZoom - (startZoom - endZoom) * min(1.0, (currentTime / zoomDuration))
+            } else {
+                // Maintenir le zoom final
+                scale = endZoom
+            }
+            
+            // Appliquer la transformation
+            let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
+            
+            // Pour le dézoom, on utilise une translation qui maintient l'image centrée
+            let translateX = ((1.0 - scale) * source.extent.width) / 2.0
+            let translateY = ((1.0 - scale) * source.extent.height) / 2.0
+            
+            let translateTransform = CGAffineTransform(translationX: translateX, y: translateY)
+            let transform = scaleTransform.concatenating(translateTransform)
+            let transformedImage = source.transformed(by: transform)
+            
+            request.finish(with: transformedImage, context: nil)
+        }
+        
+        player.currentItem?.videoComposition = videoComposition
+        
+        // Mettre à jour l'état du zoom
+        DispatchQueue.main.async {
+            self.isZoomedIn = false
+            self.currentScaleFactor = 1.0
+        }
     }
 }
 

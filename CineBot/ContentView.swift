@@ -183,70 +183,94 @@ struct ContentView: View {
     }    
     
     private var openFileButton: some View {
-        Button(action: {
-            if let fileURL = openFileDialog() {
-                loadVideo(url: fileURL)
+        VStack {
+            Button(action: {
+                if let fileURL = openFileDialog() {
+                    loadVideo(url: fileURL)
+                }
+            }) {
+                Image(systemName: "folder.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.yellow)
             }
-        }) {
-            Image(systemName: "folder.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Ouvrir")
+                .font(.caption)
                 .foregroundColor(.yellow)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     private var playPauseButton: some View {
-        Button(action: {
-            if asset == nil {
-                showAlert = true
-            } else {
-                if isPlaying {
-                    player.pause()
+        VStack {
+            Button(action: {
+                if asset == nil {
+                    showAlert = true
                 } else {
-                    // Réinitialiser la composition vidéo pour revenir à la taille normale
-                    player.currentItem?.videoComposition = nil
-                    player.play()
+                    if isPlaying {
+                        player.pause()
+                    } else {
+                        // Réinitialiser la composition vidéo pour revenir à la taille normale
+                        player.currentItem?.videoComposition = nil
+                        player.play()
+                    }
+                    isPlaying.toggle()
                 }
-                isPlaying.toggle()
+            }) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.blue)
             }
-        }) {
-            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+            .buttonStyle(PlainButtonStyle())
+            
+            Text(isPlaying ? "Pause" : "Lire")
+                .font(.caption)
                 .foregroundColor(.blue)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     private var stopButton: some View {
-        Button(action: {
-            player.pause()
-            player.seek(to: .zero)
-            isPlaying = false
-        }) {
-            Image(systemName: "stop.circle.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+        VStack {
+            Button(action: {
+                player.pause()
+                player.seek(to: .zero)
+                isPlaying = false
+            }) {
+                Image(systemName: "stop.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Stop")
+                .font(.caption)
                 .foregroundColor(.red)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     private var transcriptionButton: some View {
-        Button(action: {
-            if asset == nil {
-                showAlert = true
-            } else {
-                transcript()
+        VStack {
+            Button(action: {
+                if asset == nil {
+                    showAlert = true
+                } else {
+                    transcript()
+                }
+            }) {
+                Image(systemName: "text.bubble.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.green)
             }
-        }) {
-            Image(systemName: "text.bubble.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Transcrire")
+                .font(.caption)
                 .foregroundColor(.green)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     // Transcription section
@@ -499,58 +523,82 @@ struct ContentView: View {
     }
     
     private var resetButton: some View {
-        Button(action: {
-            resetSegments()
-        }) {
-            Image(systemName: "arrow.counterclockwise.circle.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+        VStack {
+            Button(action: {
+                resetSegments()
+            }) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Réinitialiser")
+                .font(.caption)
                 .foregroundColor(.red)
         }
-        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 10)
     }
     
     private var audioButton: some View {
-        Button(action: {
-            if let url = openAudioFileDialog() {
-                audioURL = url
-                showAudioFileName = true
-                prepareAudioPlayer(url: url)
+        VStack {
+            Button(action: {
+                if let url = openAudioFileDialog() {
+                    audioURL = url
+                    showAudioFileName = true
+                    prepareAudioPlayer(url: url)
+                }
+            }) {
+                Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.orange)
             }
-        }) {
-            Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Audio")
+                .font(.caption)
                 .foregroundColor(.orange)
         }
-        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 10)
     }
     
     private var restartButton: some View {
-        Button(action: {
-            restartPlayback()
-        }) {
-            Image(systemName: "backward.end.circle.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+        VStack {
+            Button(action: {
+                restartPlayback()
+            }) {
+                Image(systemName: "backward.end.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Redémarrer")
+                .font(.caption)
                 .foregroundColor(.blue)
         }
-        .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, 10)
     }
     
     private var playPauseSegmentsButton: some View {
-        Button(action: {
-            togglePlaySelectedSegments()
-        }) {
-            Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
-                .resizable()
-                .frame(width: 50, height: 50)
+        VStack {
+            Button(action: {
+                togglePlaySelectedSegments()
+            }) {
+                Image(systemName: isPlayingSelectedSegments ? "pause.circle.fill" : "play.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.green)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text(isPlayingSelectedSegments ? "Pause" : "Lire")
+                .font(.caption)
                 .foregroundColor(.green)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     // Clean up resources

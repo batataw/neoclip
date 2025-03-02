@@ -76,6 +76,12 @@ struct ContentView: View {
     @State private var videoHashtags: String = ""  // Variable d'état pour les hashtags
     @State private var showCopyNotification: Bool = false
     @State private var isGeneratingContent: Bool = false
+    @State private var showTitleOverlay: Bool = false
+    @State private var titleBackgroundColor: Color = .blue
+    @State private var titleFontSize: Double = 24
+    @State private var titleBorderWidth: Double = 2
+    @State private var titleDuration: String = "5s"  // Options: "5s", "10s", "Tout"
+    @State private var titleFontName: String = "System" // Police par défaut
 
     var body: some View {
         mainContentView
@@ -138,6 +144,9 @@ struct ContentView: View {
                 .padding(.horizontal)
             }
 
+            // Ajouter les options de superposition du titre
+            titleOverlayOptionsSection
+
             VStack(alignment: .leading, spacing: 5) {
                 Text("Description")
                     .font(.subheadline)
@@ -199,6 +208,89 @@ struct ContentView: View {
         }
         .padding(.bottom)  // Supprimé .padding(.vertical) pour enlever la marge du haut
         .background(Color.gray.opacity(0.1))
+    }
+
+    // Nouvelle section pour les options de superposition du titre
+    private var titleOverlayOptionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Options de superposition du titre")
+                .font(.subheadline)
+                .foregroundColor(.white)
+                .padding(.leading)
+            
+            HStack {
+                Toggle("Afficher le titre", isOn: $showTitleOverlay)
+                    .toggleStyle(SwitchToggleStyle(tint: .purple))
+                Spacer()
+            }
+            .padding(.horizontal)
+            
+            if showTitleOverlay {
+                // Première ligne d'options
+                HStack(spacing: 15) {
+                    VStack(alignment: .leading) {
+                        Text("Couleur")
+                            .font(.caption)
+                        ColorPicker("", selection: $titleBackgroundColor)
+                            .labelsHidden()
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Taille")
+                            .font(.caption)
+                        Slider(value: $titleFontSize, in: 16...36, step: 1)
+                            .frame(width: 100)
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Bordure")
+                            .font(.caption)
+                        Slider(value: $titleBorderWidth, in: 0...10, step: 0.5)  // Augmenté à 10
+                            .frame(width: 100)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                
+                // Deuxième ligne d'options
+                HStack(spacing: 15) {
+                    VStack(alignment: .leading) {
+                        Text("Durée")
+                            .font(.caption)
+                        Picker("", selection: $titleDuration) {
+                            Text("5 secondes").tag("5s")
+                            Text("10 secondes").tag("10s")
+                            Text("Tout le clip").tag("Tout")
+                        }
+                        .frame(width: 120)
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                    
+                    VStack(alignment: .leading) {
+                        Text("Police")
+                            .font(.caption)
+                        Picker("", selection: $titleFontName) {
+                            Text("System").tag("System")
+                            Text("Helvetica").tag("Helvetica")
+                            Text("Arial").tag("Arial")
+                            Text("Times New Roman").tag("Times New Roman")
+                            Text("Avenir").tag("Avenir")
+                            Text("Georgia").tag("Georgia")
+                        }
+                        .frame(width: 150)
+                        .pickerStyle(MenuPickerStyle())
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(Color.purple.opacity(0.1))
+        .cornerRadius(8)
+        .padding(.horizontal)
     }
 
     // Ajout de la nouvelle section de boutons pour titre et description
@@ -348,11 +440,65 @@ struct ContentView: View {
 
     // Video player
     private var videoPlayer: some View {
-        VideoPlayer(player: player)
-            .aspectRatio(9 / 16, contentMode: .fit)
-            .cornerRadius(10)
-            .shadow(radius: 5)
-            .padding()
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                VideoPlayer(player: player)
+                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .cornerRadius(10)
+                    .shadow(radius: 5)
+                
+                // Superposition du titre si activée et selon la durée choisie
+                if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
+                    titleOverlayView(containerWidth: geometry.size.width)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .padding()
+    }
+
+    // Propriété calculée pour déterminer si le titre doit être affiché
+    private var shouldShowTitleOverlay: Bool {
+        switch titleDuration {
+        case "5s":
+            return currentTime < 5.0
+        case "10s":
+            return currentTime < 10.0
+        case "Tout":
+            return true
+        default:
+            return currentTime < 5.0
+        }
+    }
+
+    // Vue du titre superposé avec la largeur du conteneur
+    private func titleOverlayView(containerWidth: CGFloat) -> some View {
+        // Calculer la largeur réelle de la vidéo
+        let videoWidth = min(containerWidth, containerWidth / (16/9))
+        // Calculer la largeur maximale du titre (80% de la largeur de la vidéo)
+        let titleMaxWidth = videoWidth * 0.8
+        
+        return VStack {
+            Text(videoTitle)
+                .font(Font.custom(titleFontName == "System" ? ".AppleSystemUIFont" : titleFontName, size: CGFloat(titleFontSize)))
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding()
+                .frame(maxWidth: titleMaxWidth)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(titleBackgroundColor.opacity(0.8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white, lineWidth: CGFloat(titleBorderWidth))
+                        )
+                )
+                .padding(.top, 20) // Espace en haut pour ne pas être trop proche du bord supérieur
+        }
+        .frame(maxWidth: .infinity)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.5), value: shouldShowTitleOverlay)
     }
 
     // Video progress bar

@@ -145,10 +145,13 @@ struct ContentView: View {
             openFileButton
             playPauseButton
             stopButton
-            transcriptionButton
             Spacer()
+            transcriptionButton            
         }
         .padding()
+        .background(Color.blue.opacity(0.2))
+        .cornerRadius(10)
+        .padding(.horizontal)
     }
     
     private var openFileButton: some View {
@@ -167,14 +170,18 @@ struct ContentView: View {
     
     private var playPauseButton: some View {
         Button(action: {
-            if isPlaying {
-                player.pause()
+            if asset == nil {
+                showAlert = true
             } else {
-                // Réinitialiser la composition vidéo pour revenir à la taille normale
-                player.currentItem?.videoComposition = nil
-                player.play()
+                if isPlaying {
+                    player.pause()
+                } else {
+                    // Réinitialiser la composition vidéo pour revenir à la taille normale
+                    player.currentItem?.videoComposition = nil
+                    player.play()
+                }
+                isPlaying.toggle()
             }
-            isPlaying.toggle()
         }) {
             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                 .resizable()

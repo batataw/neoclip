@@ -627,6 +627,12 @@ struct ContentView: View {
         asset = videoAsset
         videoURL = url
         
+        // Réinitialiser les données de transcription
+        transcriptionText = ""
+        transcriptionSegments = []
+        formattedTranscription = ""
+        originalSegments = []
+        
         // Load the duration asynchronously
         videoAsset.loadValuesAsynchronously(forKeys: ["duration"]) {
             var error: NSError? = nil

@@ -809,18 +809,26 @@ struct ContentView: View {
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(4)
 
-            // Ajout du nombre de mots et de caractères
+            // Ajout du nombre de mots et de caractères avec coloration de la durée
+            let duration = transcriptionSegments[index].duration
+            let durationColor: Color = duration < 1.0 ? .red : (duration > 10.0 ? .orange : .secondary)
+            
             Text(
                 String(
-                    format: "%d mots, %d car. | %.1fs - %.1fs (Durée: %.1fs)",
+                    format: "%d mots, %d car. | %.1fs - %.1fs ",
                     transcriptionSegments[index].text.split(separator: " ").count,
                     transcriptionSegments[index].text.count,
                     transcriptionSegments[index].startTime,
-                    transcriptionSegments[index].endTime,
-                    transcriptionSegments[index].duration)
+                    transcriptionSegments[index].endTime)
             )
             .font(.caption)
             .foregroundColor(.secondary)
+            
+            // Affichage de la durée avec coloration conditionnelle
+            Text(String(format: "(Durée: %.1fs)", duration))
+                .font(.caption)
+                .foregroundColor(durationColor)
+                .fontWeight(duration < 1.0 || duration > 10.0 ? .bold : .regular)
 
             // Affichage de l'ajustement de durée
             if transcriptionSegments[index].durationAdjustment != 0 {

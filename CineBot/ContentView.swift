@@ -72,6 +72,9 @@ struct ContentView: View {
     @State private var audioVolume: Float = 0.5 // Volume par défaut à 50%
     @State private var currentScaleFactor: CGFloat = 1.0 // Pour suivre le facteur d'échelle actuel
     @State private var randomGenerator = SystemRandomNumberGenerator()
+    @State private var videoTitle: String = "" // Variable d'état pour le titre
+    @State private var videoDescription: String = "" // Variable d'état pour la description
+    @State private var videoHashtags: String = "" // Variable d'état pour les hashtags
 
 
     var body: some View {
@@ -91,9 +94,115 @@ struct ContentView: View {
     
     // Break up the body into smaller components
     private var mainContentView: some View {
-        HStack {
+        HStack(alignment: .top) {
             videoPlayerSection
+                .frame(maxWidth: .infinity)
+            
             transcriptionSection
+                .frame(maxWidth: .infinity)
+            
+            titleAndDescriptionSection
+                .frame(maxWidth: .infinity) // Limiter la largeur pour un bon alignement
+        }
+    }
+    
+    // Nouvelle section pour le titre et la description
+    private var titleAndDescriptionSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            titleDescriptionHeader
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Titre")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding(.leading)
+                
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))  // Fond gris doux
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.6), lineWidth: 1) // Bordure gris foncé
+                        )
+                    
+                    TextEditor(text: $videoTitle)
+                        .font(.system(size: 14)) // Définir la police à 14
+                        .padding(4)  // Petit padding interne
+                        .scrollContentBackground(.hidden) // Masque le fond par défaut
+                        .background(Color.gray.opacity(0.2)) // Applique un fond similaire
+                        .cornerRadius(6)  // Légèrement plus petit que le conteneur
+                }
+                .frame(height: 40)  // Hauteur fixe pour le titre
+                .shadow(color: .gray.opacity(0.3), radius: 3, x: 0, y: 2)
+                .padding(.horizontal)
+            }
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Description")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding(.leading)
+                
+                    ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.gray.opacity(0.2))  // Fond gris doux
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.gray.opacity(0.6), lineWidth: 1) // Bordure gris foncé
+        )
+                    
+                    TextEditor(text: $videoDescription)
+                        .font(.system(size: 14)) // Définir la police à 14
+                        .padding(4)  // Petit padding interne
+                        .scrollContentBackground(.hidden) // Masque le fond par défaut
+                        .background(Color.gray.opacity(0.2)) // Applique un fond similaire à TextField
+                        .cornerRadius(6)  // Légèrement plus petit que le conteneur
+                }
+                .frame(height: 140)  // Hauteur appliquée au ZStack
+                .shadow(color: .gray.opacity(0.3), radius: 3, x: 0, y: 2)
+                .padding(.horizontal)
+            }
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Hashtags")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding(.leading)
+                
+                ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))  // Fond gris doux
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.6), lineWidth: 1) // Bordure gris foncé
+        )
+                    
+                    TextEditor(text: $videoHashtags)
+                        .font(.system(size: 14)) // Définir la police à 14
+                        .padding(4)  // Petit padding interne
+                        .scrollContentBackground(.hidden) // Masque le fond par défaut
+                        .background(Color.gray.opacity(0.2)) // Applique un fond similaire à TextField
+                        .cornerRadius(6)  // Légèrement plus petit que le conteneur
+                }
+                .frame(height: 40)  // Hauteur appliquée au ZStack
+                .shadow(color: .gray.opacity(0.3), radius: 3, x: 0, y: 2)
+                .padding(.horizontal)
+            }
+        }
+        .padding(.bottom) // Supprimé .padding(.vertical) pour enlever la marge du haut
+        .background(Color.gray.opacity(0.1))
+    }
+    
+    // Bandeau violet pour la section titre et description
+    private var titleDescriptionHeader: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.purple.opacity(0.2))
+                .frame(height: 60)
+            
+            Text("TITRE & DESCRIPTION")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(.purple)
         }
     }
     

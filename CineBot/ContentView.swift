@@ -1134,6 +1134,7 @@ struct ContentView: View {
     private var exportVideoButton: some View {
         VStack {
             Button(action: {
+                print("Bouton d'export appuyé")
                 exportSelectedSegments()
             }) {
                 Image(systemName: "square.and.arrow.up.fill")
@@ -2119,27 +2120,52 @@ struct ContentView: View {
 
     // Fonction pour exporter les segments sélectionnés avec le titre et le son
     private func exportSelectedSegments() {
+        print("Début de la fonction exportSelectedSegments")
+        
         guard let videoURL = videoURL, let asset = asset else {
             // Afficher une alerte si aucune vidéo n'est chargée
+            print("Aucune vidéo chargée")
             alertType = .noVideo
             return
         }
         
         // Filtrer les segments actifs
         let activeSegments = transcriptionSegments.filter { $0.isActive }
+        print("Nombre de segments actifs: \(activeSegments.count)")
         
         // Vérifier qu'il y a des segments actifs à exporter
         if activeSegments.isEmpty {
+            print("Aucun segment actif à exporter")
             return
         }
         
         // Ouvrir un dialogue pour choisir où enregistrer la vidéo exportée
+        print("Ouverture du dialogue de sauvegarde")
         let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [UTType.mpeg4Movie]
-        savePanel.nameFieldStringValue = "video_montage.mp4"
+        savePanel.title = "Exporter la vidéo"
+        savePanel.prompt = "Exporter"
+        savePanel.message = "Choisissez où enregistrer votre vidéo"
         
-        if savePanel.runModal() == .OK, let outputURL = savePanel.url {
-            // Commencer l'export
+        // Spécifier le type de fichier MP4
+        savePanel.allowedContentTypes = [UTType.mpeg4Movie]
+        
+        // Générer un nom de fichier unique avec un timestamp
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        savePanel.nameFieldStringValue = "video_montage_\(timestamp).mp4"
+        
+        savePanel.canCreateDirectories = true
+        
+        // Exécuter le panneau de sauvegarde de manière modale
+        let response = savePanel.runModal()
+        print("Résultat du dialogue: \(response.rawValue)")
+        
+        if response == .OK, let outputURL = savePanel.url {
+            print("URL de sortie sélectionnée: \(outputURL.path)")
+            
+            // Commencer l'export sans vérifier si le fichier existe déjà
+            print("Début de l'export")
             isExportingVideo = true
             exportProgress = 0.0
             
@@ -2446,21 +2472,25 @@ struct ContentView: View {
             }
             
             // Créer une session d'export
+            print("Création de la session d'export")
             guard let exportSession = AVAssetExportSession(
                 asset: composition,
                 presetName: AVAssetExportPresetHighestQuality
             ) else {
+                print("Échec de la création de la session d'export")
                 isExportingVideo = false
                 return
             }
             
             // Configurer la session d'export
+            print("Configuration de la session d'export avec URL: \(outputURL.path)")
             exportSession.outputURL = outputURL
             exportSession.outputFileType = .mp4
             exportSession.videoComposition = videoComposition
             
             // Configurer l'audio mix si nécessaire
             if let compositionAudioTrack = compositionAudioTrack {
+                print("Configuration de l'audio mix")
                 let audioMix = AVMutableAudioMix()
                 let audioMixInputParameters = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
                 
@@ -2478,34 +2508,49 @@ struct ContentView: View {
             }
             
             // Ajouter un observateur de progression
+            print("Ajout de l'observateur de progression")
             let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
                 DispatchQueue.main.async {
                     // La progression de l'export commence à 50% (après la préparation)
                     self.exportProgress = 0.5 + Float(exportSession.progress) * 0.5
+                    print("Progression de l'export: \(self.exportProgress)")
                 }
             }
             
             // Démarrer l'export
-            exportSession.exportAsynchronously {
-                // Arrêter le timer de progression
-                progressTimer.invalidate()
-                
-                DispatchQueue.main.async {
-                    self.isExportingVideo = false
-                    self.exportProgress = 1.0
+            print("Démarrage de l'export asynchrone")
+            DispatchQueue.global(qos: .userInitiated).async {
+                exportSession.exportAsynchronously {
+                    // Arrêter le timer de progression
+                    print("Export asynchrone terminé")
+                    progressTimer.invalidate()
                     
-                    switch exportSession.status {
-                    case .completed:
-                        self.alertType = .exportCompleted(message: "Export vidéo terminé avec succès")
-                        withAnimation {
-                            self.showExportSuccessNotification = true
+                    DispatchQueue.main.async {
+                        print("Export terminé avec le statut: \(exportSession.status.rawValue)")
+                        if let error = exportSession.error {
+                            print("Erreur d'export: \(error.localizedDescription)")
                         }
-                    case .failed:
-                        self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
-                    case .cancelled:
-                        self.alertType = .exportCompleted(message: "Export vidéo annulé")
-                    default:
-                        self.alertType = .exportCompleted(message: "Export vidéo terminé avec le statut: \(exportSession.status.rawValue)")
+                        
+                        self.isExportingVideo = false
+                        self.exportProgress = 1.0
+                        
+                        switch exportSession.status {
+                        case .completed:
+                            print("Export réussi")
+                            self.alertType = .exportCompleted(message: "Export vidéo terminé avec succès")
+                            withAnimation {
+                                self.showExportSuccessNotification = true
+                            }
+                        case .failed:
+                            print("Export échoué: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
+                            self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
+                        case .cancelled:
+                            print("Export annulé")
+                            self.alertType = .exportCompleted(message: "Export vidéo annulé")
+                        default:
+                            print("Export terminé avec un statut inattendu: \(exportSession.status.rawValue)")
+                            self.alertType = .exportCompleted(message: "Export vidéo terminé avec le statut: \(exportSession.status.rawValue)")
+                        }
                     }
                 }
             }
@@ -2686,6 +2731,7 @@ struct ContentView: View {
     private func applyMixEffectForExport(sourceVideoTrack: AVAssetTrack, activeSegments: [TranscriptionSegment], layerInstruction: AVMutableVideoCompositionLayerInstruction) {
         // Pour l'effet MIX, on alterne entre différents effets
         var currentTime: CMTime = .zero
+        var previousEffectWasZoom = false // Pour suivre si le segment précédent était un zoom
         
         for (index, segment) in activeSegments.enumerated() {
             let segmentDuration = CMTime(
@@ -2704,8 +2750,13 @@ struct ContentView: View {
             // Nombre d'étapes pour chaque transition
             let numberOfSteps = 10
             
-            // Choisir aléatoirement un effet parmi trois possibilités
-            let effectType = Int.random(in: 0...2)
+            // Choisir un effet en fonction du contexte et de l'aléatoire
+            var effectType = Int.random(in: 0...3)
+            
+            // Si le segment précédent était un zoom, on a une chance d'appliquer un dézoom
+            if previousEffectWasZoom && Int.random(in: 0...1) == 1 {
+                effectType = 3 // Force un dézoom
+            }
             
             switch effectType {
             case 0:
@@ -2736,6 +2787,9 @@ struct ContentView: View {
                 // Appliquer la transformation maximale pour le reste du segment
                 layerInstruction.setTransform(maxZoomCombinedTransform, at: CMTimeAdd(currentTime, actualTransitionDuration))
                 
+                // Marquer que ce segment était un zoom pour le prochain
+                previousEffectWasZoom = true
+                
             case 1:
                 // Effet 2: Jump Cut (seulement pour les segments assez longs)
                 if segmentDuration.seconds >= 2.0 {
@@ -2756,16 +2810,61 @@ struct ContentView: View {
                     let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
                     
                     layerInstruction.setTransform(combinedTransform, at: midPoint)
+                    
+                    // Marquer que ce segment était un zoom pour le prochain
+                    previousEffectWasZoom = true
                 } else {
                     // Si le segment est trop court, appliquer une transformation normale
                     let normalTransform = CGAffineTransform.identity
                     layerInstruction.setTransform(normalTransform, at: currentTime)
+                    
+                    // Réinitialiser le suivi du zoom
+                    previousEffectWasZoom = false
                 }
                 
             case 2:
                 // Effet 3: Normal (pas de transformation)
                 let normalTransform = CGAffineTransform.identity
                 layerInstruction.setTransform(normalTransform, at: currentTime)
+                
+                // Réinitialiser le suivi du zoom
+                previousEffectWasZoom = false
+                
+            case 3:
+                // Effet 4: Dézoom (de zoom à normal)
+                // Commencer avec un zoom et progressivement revenir à la normale
+                let transitionInStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
+                
+                // Appliquer d'abord un zoom initial
+                let initialZoomFactor: CGFloat = 1.4
+                let initialTransform = CGAffineTransform(scaleX: initialZoomFactor, y: initialZoomFactor)
+                let initialTranslateX = (sourceVideoTrack.naturalSize.width * (1.0 - Double(initialZoomFactor))) / 2.0
+                let initialTranslateY = (sourceVideoTrack.naturalSize.height * (1.0 - Double(initialZoomFactor))) / 2.0
+                let initialCombinedTransform = initialTransform.translatedBy(x: initialTranslateX, y: initialTranslateY)
+                
+                layerInstruction.setTransform(initialCombinedTransform, at: currentTime)
+                
+                // Puis dézoom progressivement
+                for step in 0..<numberOfSteps {
+                    // Calculer le facteur de zoom pour cette étape (de 1.4 à 1.0)
+                    let zoomFactor = 1.4 - (0.4 * Double(step) / Double(numberOfSteps - 1))
+                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                    
+                    // Centrer l'image
+                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                    
+                    let stepTime = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(transitionInStepDuration, multiplier: Double(step)))
+                    layerInstruction.setTransform(combinedTransform, at: stepTime)
+                }
+                
+                // Maintenir la vue normale pour le reste du segment
+                let normalTransform = CGAffineTransform.identity
+                layerInstruction.setTransform(normalTransform, at: CMTimeAdd(currentTime, actualTransitionDuration))
+                
+                // Réinitialiser le suivi du zoom
+                previousEffectWasZoom = false
                 
             default:
                 break

@@ -2038,14 +2038,14 @@ struct ContentView: View {
 
         do {
             // Créer un prompt pour ChatGPT
-            let prompt = """
+               let prompt = """
                 Voici la transcription d'une vidéo:
 
                 \(transcriptionText)
 
-                Génère un titre putaclic très court, une description engageante et des hashtags pertinents pour cette vidéo.
+                Génère un titre provocateur très court de 5 à 10 mots, une description engageante et des hashtags pertinents pour cette vidéo.
                 Format:
-                TITRE: [titre putaclic]
+                TITRE: [titre provocateur de 5 à 10 mots]
                 DESCRIPTION: [description engageante de 2-3 phrases]
                 HASHTAGS: [5-7 hashtags pertinents]
                 """

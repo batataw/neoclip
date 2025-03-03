@@ -82,6 +82,25 @@ struct ContentView: View {
     @State private var titleBorderWidth: Double = 2
     @State private var titleDuration: String = "5s"  // Options: "5s", "10s", "Tout"
     @State private var titleFontName: String = "System" // Police par défaut
+    @State private var isExportingVideo: Bool = false // Variable pour suivre l'état de l'export
+    @State private var exportProgress: Float = 0.0 // Variable pour suivre la progression de l'export
+    @State private var alertType: AlertType? = nil // Type d'alerte à afficher
+    @State private var showExportSuccessNotification: Bool = false // Pour afficher une notification de succès
+
+    // Enum pour gérer les différents types d'alertes
+    enum AlertType: Identifiable {
+        case noVideo
+        case exportCompleted(message: String)
+        
+        var id: Int {
+            switch self {
+            case .noVideo:
+                return 0
+            case .exportCompleted:
+                return 1
+            }
+        }
+    }
 
     var body: some View {
         mainContentView
@@ -91,11 +110,19 @@ struct ContentView: View {
             .onAppear {
                 addPeriodicTimeObserver()
             }
-            .alert(isPresented: $showAlert) {
-                Alert(
-                    title: Text("No Video Loaded"),
-                    message: Text("Please load a video before starting transcription."),
-                    dismissButton: .default(Text("OK")))
+            .alert(item: $alertType) { type in
+                switch type {
+                case .noVideo:
+                    return Alert(
+                        title: Text("Aucune vidéo chargée"),
+                        message: Text("Veuillez charger une vidéo avant de commencer la transcription."),
+                        dismissButton: .default(Text("OK")))
+                case .exportCompleted(let message):
+                    return Alert(
+                        title: Text("Export Vidéo"),
+                        message: Text(message),
+                        dismissButton: .default(Text("OK")))
+                }
             }
     }
 
@@ -577,6 +604,7 @@ struct ContentView: View {
                 audioButton
                 restartButton
                 playPauseSegmentsButton
+                exportVideoButton
             }
             .padding()
             .background(Color.green.opacity(0.2))  // Fond vert pour correspondre au thème de la section Montage
@@ -586,6 +614,76 @@ struct ContentView: View {
         }
         .padding(.bottom, 20)
         .padding(.horizontal, 20)
+        .overlay(
+            // Overlay pour afficher la progression de l'export
+            Group {
+                if isExportingVideo {
+                    ZStack {
+                        Color.black.opacity(0.7)
+                            .edgesIgnoringSafeArea(.all)
+                        
+                        VStack(spacing: 15) {
+                            Text("Export en cours...")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            
+                            ProgressView(value: exportProgress, total: 1.0)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                                .frame(width: 200)
+                            
+                            Text("\(Int(exportProgress * 100))%")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                        }
+                        .padding(25)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(15)
+                    }
+                }
+                
+                // Notification de succès d'export
+                if showExportSuccessNotification {
+                    VStack {
+                        Spacer()
+                        
+                        HStack {
+                            Spacer()
+                            
+                            VStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .resizable()
+                                    .frame(width: 40, height: 40)
+                                    .foregroundColor(.green)
+                                
+                                Text("Export réussi !")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(20)
+                            .background(Color.black.opacity(0.8))
+                            .cornerRadius(15)
+                            .shadow(radius: 10)
+                            .padding(.trailing, 30)
+                            .padding(.bottom, 30)
+                            .onAppear {
+                                // Masquer la notification après 3 secondes
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                    withAnimation {
+                                        showExportSuccessNotification = false
+                                    }
+                                }
+                            }
+                            
+                            Spacer()
+                        }
+                        
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
+                }
+            }
+        )
     }
 
     private var openFileButton: some View {
@@ -612,7 +710,7 @@ struct ContentView: View {
         VStack {
             Button(action: {
                 if asset == nil {
-                    showAlert = true
+                    alertType = .noVideo
                 } else {
                     if isPlaying {
                         player.pause()
@@ -661,7 +759,7 @@ struct ContentView: View {
         VStack {
             Button(action: {
                 if asset == nil {
-                    showAlert = true
+                    alertType = .noVideo
                 } else {
                     transcript()
                 }
@@ -1030,6 +1128,27 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundColor(.green)
         }
+    }
+
+    // Bouton d'export vidéo
+    private var exportVideoButton: some View {
+        VStack {
+            Button(action: {
+                exportSelectedSegments()
+            }) {
+                Image(systemName: "square.and.arrow.up.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.purple)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(isExportingVideo || transcriptionSegments.filter { $0.isActive }.isEmpty)
+
+            Text("Exporter")
+                .font(.caption)
+                .foregroundColor(isExportingVideo || transcriptionSegments.filter { $0.isActive }.isEmpty ? .gray : .purple)
+        }
+        .padding(.horizontal, 10)
     }
 
     // Clean up resources
@@ -1622,6 +1741,7 @@ struct ContentView: View {
         currentTime = segment.startTime
     }
 
+
     // Fonction pour arrêter la lecture des segments sélectionnés
     private func stopPlayingSelectedSegments() {
         // Arrêter le timer
@@ -1995,6 +2115,665 @@ struct ContentView: View {
         videoTitle = ""
         videoDescription = ""
         videoHashtags = ""
+    }
+
+    // Fonction pour exporter les segments sélectionnés avec le titre et le son
+    private func exportSelectedSegments() {
+        guard let videoURL = videoURL, let asset = asset else {
+            // Afficher une alerte si aucune vidéo n'est chargée
+            alertType = .noVideo
+            return
+        }
+        
+        // Filtrer les segments actifs
+        let activeSegments = transcriptionSegments.filter { $0.isActive }
+        
+        // Vérifier qu'il y a des segments actifs à exporter
+        if activeSegments.isEmpty {
+            return
+        }
+        
+        // Ouvrir un dialogue pour choisir où enregistrer la vidéo exportée
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [UTType.mpeg4Movie]
+        savePanel.nameFieldStringValue = "video_montage.mp4"
+        
+        if savePanel.runModal() == .OK, let outputURL = savePanel.url {
+            // Commencer l'export
+            isExportingVideo = true
+            exportProgress = 0.0
+            
+            // Créer une composition pour l'export
+            let composition = AVMutableComposition()
+            
+            // Créer une piste vidéo dans la composition
+            guard let compositionVideoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                isExportingVideo = false
+                return
+            }
+            
+            // Créer une piste audio dans la composition si nécessaire
+            let compositionAudioTrack = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid)
+            
+            // Récupérer les pistes vidéo et audio de l'asset original
+            let videoTracks = asset.tracks(withMediaType: .video)
+            let audioTracks = asset.tracks(withMediaType: .audio)
+            
+            guard let sourceVideoTrack = videoTracks.first else {
+                isExportingVideo = false
+                return
+            }
+            
+            // Récupérer la piste audio source si elle existe
+            let sourceAudioTrack = audioTracks.first
+            
+            // Créer un objet pour les instructions de composition vidéo
+            let videoCompositionInstructions = AVMutableVideoCompositionInstruction()
+            
+            // Durée totale de la vidéo exportée
+            var totalDuration: CMTime = .zero
+            
+            // Traiter chaque segment actif
+            for (index, segment) in activeSegments.enumerated() {
+                // Calculer les temps de début et de fin du segment
+                let startTime = CMTime(seconds: segment.startTime, preferredTimescale: 600)
+                let endTime = CMTime(seconds: segment.endTime + segment.durationAdjustment, preferredTimescale: 600)
+                let segmentTimeRange = CMTimeRange(start: startTime, end: endTime)
+                let segmentDuration = CMTimeSubtract(endTime, startTime)
+                
+                do {
+                    // Ajouter le segment vidéo à la composition
+                    try compositionVideoTrack.insertTimeRange(
+                        segmentTimeRange,
+                        of: sourceVideoTrack,
+                        at: totalDuration
+                    )
+                    
+                    // Ajouter le segment audio à la composition si disponible
+                    if let sourceAudioTrack = sourceAudioTrack, let compositionAudioTrack = compositionAudioTrack {
+                        try compositionAudioTrack.insertTimeRange(
+                            segmentTimeRange,
+                            of: sourceAudioTrack,
+                            at: totalDuration
+                        )
+                    }
+                    
+                    // Ajouter l'audio externe si disponible
+                    if let audioURL = audioURL, let audioAsset = AVAsset(url: audioURL) as? AVURLAsset, let compositionAudioTrack = compositionAudioTrack {
+                        let audioTracks = audioAsset.tracks(withMediaType: .audio)
+                        if let audioTrack = audioTracks.first {
+                            // Calculer la durée de l'audio à insérer
+                            let segmentDurationSeconds = segmentDuration.seconds
+                            
+                            // Si c'est le premier segment, on commence au début de l'audio
+                            // Sinon, on utilise une position proportionnelle dans l'audio
+                            let audioStartTime: CMTime
+                            let audioDuration: Double
+                            
+                            if index == 0 {
+                                // Premier segment: commencer au début de l'audio
+                                audioStartTime = .zero
+                                audioDuration = min(segmentDurationSeconds, audioAsset.duration.seconds)
+                            } else {
+                                // Segments suivants: calculer une position proportionnelle
+                                // Ou boucler l'audio si nécessaire
+                                let totalSegmentsDuration = activeSegments[0..<index]
+                                    .reduce(0.0) { $0 + ($1.endTime - $1.startTime + $1.durationAdjustment) }
+                                
+                                // Si l'audio est plus court que la vidéo, on le boucle
+                                let audioPosition = totalSegmentsDuration.truncatingRemainder(dividingBy: audioAsset.duration.seconds)
+                                audioStartTime = CMTime(seconds: audioPosition, preferredTimescale: 600)
+                                
+                                // Calculer la durée disponible jusqu'à la fin de l'audio
+                                let remainingAudioDuration = audioAsset.duration.seconds - audioPosition
+                                
+                                if remainingAudioDuration >= segmentDurationSeconds {
+                                    // Si l'audio restant est suffisant pour ce segment
+                                    audioDuration = segmentDurationSeconds
+                                } else {
+                                    // Si l'audio restant ne couvre pas tout le segment,
+                                    // on utilise ce qui reste puis on boucle depuis le début
+                                    
+                                    // D'abord, insérer la partie restante de l'audio
+                                    let remainingAudioTimeRange = CMTimeRange(
+                                        start: audioStartTime,
+                                        duration: CMTime(seconds: remainingAudioDuration, preferredTimescale: 600)
+                                    )
+                                    
+                                    try compositionAudioTrack.insertTimeRange(
+                                        remainingAudioTimeRange,
+                                        of: audioTrack,
+                                        at: totalDuration
+                                    )
+                                    
+                                    // Ensuite, insérer le début de l'audio pour compléter le segment
+                                    let additionalDuration = segmentDurationSeconds - remainingAudioDuration
+                                    let additionalTimeRange = CMTimeRange(
+                                        start: .zero,
+                                        duration: CMTime(seconds: additionalDuration, preferredTimescale: 600)
+                                    )
+                                    
+                                    try compositionAudioTrack.insertTimeRange(
+                                        additionalTimeRange,
+                                        of: audioTrack,
+                                        at: CMTimeAdd(totalDuration, CMTime(seconds: remainingAudioDuration, preferredTimescale: 600))
+                                    )
+                                    
+                                    // Comme on a déjà inséré l'audio, on définit audioDuration à 0
+                                    // pour éviter une insertion supplémentaire
+                                    audioDuration = 0
+                                }
+                            }
+                            
+                            // Insérer l'audio si nécessaire (si on n'a pas déjà tout inséré)
+                            if audioDuration > 0 {
+                                let audioTimeRange = CMTimeRange(
+                                    start: audioStartTime,
+                                    duration: CMTime(seconds: audioDuration, preferredTimescale: 600)
+                                )
+                                
+                                try compositionAudioTrack.insertTimeRange(
+                                    audioTimeRange,
+                                    of: audioTrack,
+                                    at: totalDuration
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Mettre à jour la durée totale
+                    totalDuration = CMTimeAdd(totalDuration, segmentDuration)
+                    
+                    // Mettre à jour la progression
+                    exportProgress = Float(index + 1) / Float(activeSegments.count) * 0.5
+                    
+                } catch {
+                    print("Erreur lors de l'insertion du segment: \(error.localizedDescription)")
+                    isExportingVideo = false
+                    return
+                }
+            }
+            
+            // Créer une composition vidéo pour appliquer les effets
+            let videoComposition = AVMutableVideoComposition()
+            videoComposition.renderSize = CGSize(
+                width: sourceVideoTrack.naturalSize.width,
+                height: sourceVideoTrack.naturalSize.height
+            )
+            videoComposition.frameDuration = CMTime(value: 1, timescale: 30) // 30 FPS
+            
+            // Créer les instructions de composition vidéo
+            let instructions = AVMutableVideoCompositionInstruction()
+            instructions.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
+            
+            // Créer un layer instruction pour la piste vidéo
+            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionVideoTrack)
+            
+            // Appliquer les transformations en fonction de l'effet sélectionné
+            if selectedEffect == "ZOOM" {
+                applyZoomEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+            } else if selectedEffect == "JUMP CUT" {
+                applyJumpCutEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+            } else if selectedEffect == "MIX" {
+                applyMixEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+            }
+            
+            // Ajouter l'instruction de layer à l'instruction de composition
+            instructions.layerInstructions = [layerInstruction]
+            videoComposition.instructions = [instructions]
+            
+            // Ajouter le titre si activé
+            if showTitleOverlay && !videoTitle.isEmpty {
+                // Créer un calque pour le titre
+                let titleLayer = CATextLayer()
+                titleLayer.string = videoTitle
+                titleLayer.font = CTFontCreateWithName(titleFontName == "System" ? "Helvetica" as CFString : titleFontName as CFString, titleFontSize, nil)
+                titleLayer.fontSize = titleFontSize
+                titleLayer.alignmentMode = .center
+                titleLayer.foregroundColor = CGColor.white
+                titleLayer.isWrapped = true
+                
+                // Calculer la taille du texte
+                let textSize = (videoTitle as NSString).size(withAttributes: [
+                    NSAttributedString.Key.font: NSFont(name: titleFontName == "System" ? "Helvetica" : titleFontName, size: CGFloat(titleFontSize)) ?? NSFont.systemFont(ofSize: CGFloat(titleFontSize))
+                ])
+                
+                // Créer un fond pour le titre
+                let backgroundLayer = CALayer()
+                backgroundLayer.backgroundColor = titleBackgroundColor.cgColor?.copy(alpha: 0.8)
+                
+                // Définir les dimensions du fond (un peu plus grand que le texte)
+                let padding: CGFloat = 20
+                backgroundLayer.frame = CGRect(
+                    x: (sourceVideoTrack.naturalSize.width - textSize.width - padding * 2) / 2,
+                    y: sourceVideoTrack.naturalSize.height * 0.85, // Positionner en haut
+                    width: textSize.width + padding * 2,
+                    height: textSize.height + padding * 2
+                )
+                backgroundLayer.cornerRadius = 10
+                backgroundLayer.borderWidth = titleBorderWidth
+                backgroundLayer.borderColor = CGColor.white
+                
+                // Positionner le texte sur le fond
+                titleLayer.frame = CGRect(
+                    x: backgroundLayer.frame.origin.x + padding,
+                    y: backgroundLayer.frame.origin.y + padding / 2,
+                    width: textSize.width,
+                    height: textSize.height
+                )
+                
+                // Déterminer la durée d'affichage du titre
+                var titleDisplayDuration: CMTime
+                switch titleDuration {
+                case "5s":
+                    titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                case "10s":
+                    titleDisplayDuration = CMTime(seconds: 10, preferredTimescale: 600)
+                case "Tout":
+                    titleDisplayDuration = totalDuration
+                default:
+                    titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                }
+                titleDisplayDuration = CMTimeMinimum(titleDisplayDuration, totalDuration)
+                
+                // Créer un calque parent pour contenir le fond et le texte
+                let parentLayer = CALayer()
+                parentLayer.frame = CGRect(
+                    x: 0,
+                    y: 0,
+                    width: sourceVideoTrack.naturalSize.width,
+                    height: sourceVideoTrack.naturalSize.height
+                )
+                
+                // Ajouter les calques dans l'ordre (fond puis texte)
+                parentLayer.addSublayer(backgroundLayer)
+                parentLayer.addSublayer(titleLayer)
+                
+                // Créer une animation pour l'opacité (fondu)
+                let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
+                fadeInAnimation.fromValue = 0.0
+                fadeInAnimation.toValue = 1.0
+                fadeInAnimation.duration = 0.5
+                fadeInAnimation.beginTime = 0
+                fadeInAnimation.fillMode = .forwards
+                fadeInAnimation.isRemovedOnCompletion = false
+                
+                let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
+                fadeOutAnimation.fromValue = 1.0
+                fadeOutAnimation.toValue = 0.0
+                fadeOutAnimation.duration = 0.5
+                fadeOutAnimation.beginTime = titleDisplayDuration.seconds - 0.5
+                fadeOutAnimation.fillMode = .forwards
+                fadeOutAnimation.isRemovedOnCompletion = false
+                
+                // Appliquer les animations
+                backgroundLayer.add(fadeInAnimation, forKey: "fadeIn")
+                backgroundLayer.add(fadeOutAnimation, forKey: "fadeOut")
+                titleLayer.add(fadeInAnimation, forKey: "fadeIn")
+                titleLayer.add(fadeOutAnimation, forKey: "fadeOut")
+                
+                // Créer un calque vidéo pour la composition
+                let videoLayer = CALayer()
+                videoLayer.frame = CGRect(
+                    x: 0,
+                    y: 0,
+                    width: sourceVideoTrack.naturalSize.width,
+                    height: sourceVideoTrack.naturalSize.height
+                )
+                
+                // Créer un calque racine pour contenir tous les autres calques
+                let outputLayer = CALayer()
+                outputLayer.frame = CGRect(
+                    x: 0,
+                    y: 0,
+                    width: sourceVideoTrack.naturalSize.width,
+                    height: sourceVideoTrack.naturalSize.height
+                )
+                
+                // Ajouter les calques dans l'ordre (vidéo puis titre)
+                outputLayer.addSublayer(videoLayer)
+                outputLayer.addSublayer(parentLayer)
+                
+                // Configurer l'animation du calque
+                videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+                    postProcessingAsVideoLayer: videoLayer,
+                    in: outputLayer
+                )
+            }
+            
+            // Créer une session d'export
+            guard let exportSession = AVAssetExportSession(
+                asset: composition,
+                presetName: AVAssetExportPresetHighestQuality
+            ) else {
+                isExportingVideo = false
+                return
+            }
+            
+            // Configurer la session d'export
+            exportSession.outputURL = outputURL
+            exportSession.outputFileType = .mp4
+            exportSession.videoComposition = videoComposition
+            
+            // Configurer l'audio mix si nécessaire
+            if let compositionAudioTrack = compositionAudioTrack {
+                let audioMix = AVMutableAudioMix()
+                let audioMixInputParameters = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
+                
+                // Appliquer le volume audio
+                if let audioURL = audioURL {
+                    // Si un audio externe est utilisé, appliquer le volume défini par l'utilisateur
+                    audioMixInputParameters.setVolume(audioVolume, at: .zero)
+                } else {
+                    // Sinon, utiliser le volume normal pour l'audio de la vidéo
+                    audioMixInputParameters.setVolume(1.0, at: .zero)
+                }
+                
+                audioMix.inputParameters = [audioMixInputParameters]
+                exportSession.audioMix = audioMix
+            }
+            
+            // Ajouter un observateur de progression
+            let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+                DispatchQueue.main.async {
+                    // La progression de l'export commence à 50% (après la préparation)
+                    self.exportProgress = 0.5 + Float(exportSession.progress) * 0.5
+                }
+            }
+            
+            // Démarrer l'export
+            exportSession.exportAsynchronously {
+                // Arrêter le timer de progression
+                progressTimer.invalidate()
+                
+                DispatchQueue.main.async {
+                    self.isExportingVideo = false
+                    self.exportProgress = 1.0
+                    
+                    switch exportSession.status {
+                    case .completed:
+                        self.alertType = .exportCompleted(message: "Export vidéo terminé avec succès")
+                        withAnimation {
+                            self.showExportSuccessNotification = true
+                        }
+                    case .failed:
+                        self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
+                    case .cancelled:
+                        self.alertType = .exportCompleted(message: "Export vidéo annulé")
+                    default:
+                        self.alertType = .exportCompleted(message: "Export vidéo terminé avec le statut: \(exportSession.status.rawValue)")
+                    }
+                }
+            }
+        }
+    }
+
+    // Nouvelles fonctions pour appliquer les effets lors de l'export
+    private func applyZoomEffectForExport(sourceVideoTrack: AVAssetTrack, activeSegments: [TranscriptionSegment], layerInstruction: AVMutableVideoCompositionLayerInstruction) {
+        // Appliquer un effet de zoom progressif suivi d'un dézoom progressif
+        var currentTime: CMTime = .zero
+        
+        for (index, segment) in activeSegments.enumerated() {
+            let segmentDuration = CMTime(
+                seconds: segment.endTime - segment.startTime + segment.durationAdjustment,
+                preferredTimescale: 600
+            )
+            
+            // Définir la durée de l'animation de zoom (0,5 secondes)
+            let animationDuration = CMTime(seconds: 0.5, preferredTimescale: 600)
+            
+            // S'assurer que l'animation ne dépasse pas la durée du segment
+            let actualAnimationDuration = CMTimeCompare(animationDuration, segmentDuration) > 0 
+                ? segmentDuration 
+                : animationDuration
+            
+            // Calculer le temps de début du dézoom (à la fin du segment moins la durée de l'animation)
+            let dezoomStartTime = CMTimeSubtract(CMTimeAdd(currentTime, segmentDuration), actualAnimationDuration)
+            
+            // Nombre d'étapes pour chaque phase
+            let numberOfSteps = 15
+            
+            // Phase de zoom (au début du segment)
+            let zoomStepDuration = CMTimeMultiplyByFloat64(actualAnimationDuration, multiplier: 1.0 / Double(numberOfSteps))
+            for step in 0..<numberOfSteps {
+                // Calculer le facteur de zoom pour cette étape (de 1.0 à 1.5)
+                let zoomFactor = 1.0 + (0.5 * Double(step) / Double(numberOfSteps - 1))
+                
+                // Créer la transformation avec le zoom
+                let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                
+                // Calculer la translation pour centrer l'image
+                let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                
+                // Combiner zoom et translation pour centrer
+                let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                
+                // Appliquer la transformation à ce moment précis
+                let stepTime = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(zoomStepDuration, multiplier: Double(step)))
+                layerInstruction.setTransform(combinedTransform, at: stepTime)
+            }
+            
+            // Maintenir le zoom maximum pendant la partie centrale du segment
+            let maxZoomTransform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+            let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - 1.5)) / 2.0
+            let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - 1.5)) / 2.0
+            let maxZoomCombinedTransform = maxZoomTransform.translatedBy(x: translateX, y: translateY)
+            
+            // Appliquer la transformation maximale à la fin de la phase de zoom
+            layerInstruction.setTransform(maxZoomCombinedTransform, at: CMTimeAdd(currentTime, actualAnimationDuration))
+            
+            // Phase de dézoom (à la fin du segment)
+            let dezoomStepDuration = CMTimeMultiplyByFloat64(actualAnimationDuration, multiplier: 1.0 / Double(numberOfSteps))
+            for step in 0..<numberOfSteps {
+                // Calculer le facteur de dézoom pour cette étape (de 1.5 à 1.0)
+                let zoomFactor = 1.5 - (0.5 * Double(step) / Double(numberOfSteps - 1))
+                
+                // Créer la transformation avec le zoom
+                let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                
+                // Calculer la translation pour centrer l'image
+                let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                
+                // Combiner zoom et translation pour centrer
+                let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                
+                // Appliquer la transformation à ce moment précis
+                let stepTime = CMTimeAdd(dezoomStartTime, CMTimeMultiplyByFloat64(dezoomStepDuration, multiplier: Double(step)))
+                layerInstruction.setTransform(combinedTransform, at: stepTime)
+            }
+            
+            // Ajouter la durée du segment au temps courant
+            currentTime = CMTimeAdd(currentTime, segmentDuration)
+        }
+    }
+    
+    private func applyJumpCutEffectForExport(sourceVideoTrack: AVAssetTrack, activeSegments: [TranscriptionSegment], layerInstruction: AVMutableVideoCompositionLayerInstruction) {
+        // Pour Jump Cut, on alterne entre zoom et normal avec des transitions plus nettes
+        var currentTime: CMTime = .zero
+        
+        for (index, segment) in activeSegments.enumerated() {
+            let segmentDuration = CMTime(
+                seconds: segment.endTime - segment.startTime + segment.durationAdjustment,
+                preferredTimescale: 600
+            )
+            
+            // Définir la durée de la transition (0,2 secondes)
+            let transitionDuration = CMTime(seconds: 0.2, preferredTimescale: 600)
+            
+            // S'assurer que la transition ne dépasse pas la durée du segment
+            let actualTransitionDuration = CMTimeCompare(transitionDuration, CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.5)) > 0 
+                ? CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.5) 
+                : transitionDuration
+            
+            // Calculer le temps de fin de la transition d'entrée et le début de la transition de sortie
+            let transitionInEndTime = CMTimeAdd(currentTime, actualTransitionDuration)
+            let transitionOutStartTime = CMTimeSubtract(CMTimeAdd(currentTime, segmentDuration), actualTransitionDuration)
+            
+            // Nombre d'étapes pour chaque transition
+            let numberOfSteps = 10
+            
+            if index % 2 == 0 {
+                // Segments pairs: zoom centré avec transition progressive
+                let maxZoomFactor: CGFloat = 1.5
+                
+                // Transition d'entrée (de normal à zoom)
+                let transitionInStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
+                for step in 0..<numberOfSteps {
+                    // Calculer le facteur de zoom pour cette étape (de 1.0 à maxZoomFactor)
+                    let zoomFactor = 1.0 + (Double(maxZoomFactor - 1.0) * Double(step) / Double(numberOfSteps - 1))
+                    
+                    // Créer la transformation avec le zoom
+                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                    
+                    // Calculer la translation pour centrer l'image
+                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                    
+                    // Combiner zoom et translation pour centrer
+                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                    
+                    // Appliquer la transformation à ce moment précis
+                    let stepTime = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(transitionInStepDuration, multiplier: Double(step)))
+                    layerInstruction.setTransform(combinedTransform, at: stepTime)
+                }
+                
+                // Maintenir le zoom maximum pendant la partie centrale du segment
+                let maxZoomTransform = CGAffineTransform(scaleX: maxZoomFactor, y: maxZoomFactor)
+                let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - Double(maxZoomFactor))) / 2.0
+                let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - Double(maxZoomFactor))) / 2.0
+                let maxZoomCombinedTransform = maxZoomTransform.translatedBy(x: translateX, y: translateY)
+                
+                // Appliquer la transformation maximale à la fin de la transition d'entrée
+                layerInstruction.setTransform(maxZoomCombinedTransform, at: transitionInEndTime)
+                
+                // Transition de sortie (de zoom à normal)
+                let transitionOutStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
+                for step in 0..<numberOfSteps {
+                    // Calculer le facteur de zoom pour cette étape (de maxZoomFactor à 1.0)
+                    let zoomFactor = Double(maxZoomFactor) - (Double(maxZoomFactor - 1.0) * Double(step) / Double(numberOfSteps - 1))
+                    
+                    // Créer la transformation avec le zoom
+                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                    
+                    // Calculer la translation pour centrer l'image
+                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                    
+                    // Combiner zoom et translation pour centrer
+                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                    
+                    // Appliquer la transformation à ce moment précis
+                    let stepTime = CMTimeAdd(transitionOutStartTime, CMTimeMultiplyByFloat64(transitionOutStepDuration, multiplier: Double(step)))
+                    layerInstruction.setTransform(combinedTransform, at: stepTime)
+                }
+            } else {
+                // Segments impairs: normal
+                let normalTransform = CGAffineTransform.identity
+                layerInstruction.setTransform(normalTransform, at: currentTime)
+            }
+            
+            // Ajouter la durée du segment au temps courant
+            currentTime = CMTimeAdd(currentTime, segmentDuration)
+        }
+    }
+    
+    private func applyMixEffectForExport(sourceVideoTrack: AVAssetTrack, activeSegments: [TranscriptionSegment], layerInstruction: AVMutableVideoCompositionLayerInstruction) {
+        // Pour l'effet MIX, on alterne entre différents effets
+        var currentTime: CMTime = .zero
+        
+        for (index, segment) in activeSegments.enumerated() {
+            let segmentDuration = CMTime(
+                seconds: segment.endTime - segment.startTime + segment.durationAdjustment,
+                preferredTimescale: 600
+            )
+            
+            // Définir la durée de la transition (0,3 secondes)
+            let transitionDuration = CMTime(seconds: 0.3, preferredTimescale: 600)
+            
+            // S'assurer que la transition ne dépasse pas la durée du segment
+            let actualTransitionDuration = CMTimeCompare(transitionDuration, CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.25)) > 0 
+                ? CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.25) 
+                : transitionDuration
+            
+            // Nombre d'étapes pour chaque transition
+            let numberOfSteps = 10
+            
+            // Choisir aléatoirement un effet parmi trois possibilités
+            let effectType = Int.random(in: 0...2)
+            
+            switch effectType {
+            case 0:
+                // Effet 1: Zoom progressif
+                
+                // Transition d'entrée (de normal à zoom)
+                let transitionInStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
+                for step in 0..<numberOfSteps {
+                    // Calculer le facteur de zoom pour cette étape (de 1.0 à 1.4)
+                    let zoomFactor = 1.0 + (0.4 * Double(step) / Double(numberOfSteps - 1))
+                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
+                    
+                    // Centrer l'image
+                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
+                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
+                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                    
+                    let stepTime = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(transitionInStepDuration, multiplier: Double(step)))
+                    layerInstruction.setTransform(combinedTransform, at: stepTime)
+                }
+                
+                // Maintenir le zoom maximum pendant le reste du segment
+                let maxZoomTransform = CGAffineTransform(scaleX: 1.4, y: 1.4)
+                let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - 1.4)) / 2.0
+                let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - 1.4)) / 2.0
+                let maxZoomCombinedTransform = maxZoomTransform.translatedBy(x: translateX, y: translateY)
+                
+                // Appliquer la transformation maximale pour le reste du segment
+                layerInstruction.setTransform(maxZoomCombinedTransform, at: CMTimeAdd(currentTime, actualTransitionDuration))
+                
+            case 1:
+                // Effet 2: Jump Cut (seulement pour les segments assez longs)
+                if segmentDuration.seconds >= 2.0 {
+                    // Diviser le segment en deux parties
+                    let midPoint = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.5))
+                    
+                    // Première partie: normal
+                    let normalTransform = CGAffineTransform.identity
+                    layerInstruction.setTransform(normalTransform, at: currentTime)
+                    
+                    // Deuxième partie: zoom léger
+                    let zoomFactor: CGFloat = 1.2
+                    let transform = CGAffineTransform(scaleX: zoomFactor, y: zoomFactor)
+                    
+                    // Centrer l'image
+                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - Double(zoomFactor))) / 2.0
+                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - Double(zoomFactor))) / 2.0
+                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
+                    
+                    layerInstruction.setTransform(combinedTransform, at: midPoint)
+                } else {
+                    // Si le segment est trop court, appliquer une transformation normale
+                    let normalTransform = CGAffineTransform.identity
+                    layerInstruction.setTransform(normalTransform, at: currentTime)
+                }
+                
+            case 2:
+                // Effet 3: Normal (pas de transformation)
+                let normalTransform = CGAffineTransform.identity
+                layerInstruction.setTransform(normalTransform, at: currentTime)
+                
+            default:
+                break
+            }
+            
+            // Ajouter la durée du segment au temps courant
+            currentTime = CMTimeAdd(currentTime, segmentDuration)
+        }
     }
 }
 

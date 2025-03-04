@@ -2,6 +2,7 @@ import AVKit
 import Speech
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 // Ajout d'une structure pour stocker les segments avec horodatage
 struct TranscriptionSegment: Identifiable {
@@ -86,6 +87,7 @@ struct ContentView: View {
     @State private var exportProgress: Float = 0.0 // Variable pour suivre la progression de l'export
     @State private var alertType: AlertType? = nil // Type d'alerte à afficher
     @State private var showExportSuccessNotification: Bool = false // Pour afficher une notification de succès
+    @State private var showCaptureSuccessNotification = false
 
     // Enum pour gérer les différents types d'alertes
     enum AlertType: Identifiable {
@@ -269,6 +271,21 @@ struct ContentView: View {
                             .frame(width: 100)
                     }
                     
+                    // Nouveau bouton photo pour capturer le widget
+                    VStack(alignment: .leading) {
+                        Text("Capture")
+                            .font(.caption)
+                        Button(action: {
+                            captureOverlayToPNG()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .foregroundColor(.blue)
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Capturer le titre en PNG")
+                    }
+                    
                     VStack(alignment: .leading) {
                         Text("Bordure")
                             .font(.caption)
@@ -418,6 +435,53 @@ struct ContentView: View {
                         .background(Color.black.opacity(0.7))
                         .cornerRadius(15)
                     }
+                }
+                
+                // Notification de succès d'export
+                if showExportSuccessNotification {
+                    VStack {
+                        Spacer()
+                        
+                        HStack {
+                            Spacer()
+                            
+                            VStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .resizable()
+                                    .frame(width: 40, height: 40)
+                                    .foregroundColor(.green)
+                                
+                                Text("Export réussi !")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(20)
+                            .background(Color.black.opacity(0.8))
+                            .cornerRadius(15)
+                            .shadow(radius: 10)
+                            .padding(.trailing, 30)
+                            .padding(.bottom, 30)
+                            .onAppear {
+                                // Masquer la notification après 3 secondes
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                    withAnimation {
+                                        showExportSuccessNotification = false
+                                    }
+                                }
+                            }
+                            
+                            Spacer()
+                        }
+                        
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
+                }
+                
+                // Notification de succès de capture
+                if showCaptureSuccessNotification {
+                    captureSuccessNotificationView
                 }
             }
         )
@@ -681,6 +745,11 @@ struct ContentView: View {
                     }
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
+                }
+                
+                // Notification de succès de capture
+                if showCaptureSuccessNotification {
+                    captureSuccessNotificationView
                 }
             }
         )
@@ -2873,6 +2942,97 @@ struct ContentView: View {
             // Ajouter la durée du segment au temps courant
             currentTime = CMTimeAdd(currentTime, segmentDuration)
         }
+    }
+
+    // Fonction pour capturer le titre en PNG
+    private func captureOverlayToPNG() {
+        // Créer une vue temporaire avec le titre superposé
+        let containerWidth: CGFloat = 500 // Largeur standard pour la capture
+        let captureView = titleOverlayView(containerWidth: containerWidth)
+            .frame(width: containerWidth)
+            .padding(20)
+            .background(Color.clear) // Fond transparent au lieu de noir
+        
+        // Capturer la vue en image
+        let renderer = ImageRenderer(content: captureView)
+        
+        // Configurer le renderer pour la meilleure qualité
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
+        
+        // Activer la transparence
+        renderer.isOpaque = false
+        
+        // Générer l'image
+        if let nsImage = renderer.nsImage {
+            // Créer un panel de sauvegarde
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [UTType.png]
+            savePanel.nameFieldStringValue = "titre_overlay.png"
+            savePanel.title = "Enregistrer le titre en PNG"
+            savePanel.message = "Choisissez où enregistrer l'image du titre"
+            savePanel.prompt = "Enregistrer"
+            
+            savePanel.beginSheetModal(for: NSApp.keyWindow!) { response in
+                if response == .OK, let url = savePanel.url {
+                    // Convertir NSImage en PNG et enregistrer
+                    if let tiffData = nsImage.tiffRepresentation,
+                       let bitmapImage = NSBitmapImageRep(data: tiffData),
+                       let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+                        do {
+                            try pngData.write(to: url)
+                            // Afficher la notification de succès
+                            withAnimation {
+                                self.showCaptureSuccessNotification = true
+                            }
+                        } catch {
+                            print("Erreur lors de l'enregistrement de l'image: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Vue pour la notification de capture réussie
+    private var captureSuccessNotificationView: some View {
+        VStack {
+            Spacer()
+            
+            HStack {
+                Spacer()
+                
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+                        .foregroundColor(.blue)
+                    
+                    Text("Capture réussie !")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+                .padding(20)
+                .background(Color.black.opacity(0.8))
+                .cornerRadius(15)
+                .shadow(radius: 10)
+                .padding(.trailing, 30)
+                .padding(.bottom, 30)
+                .onAppear {
+                    // Masquer la notification après 3 secondes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation {
+                            showCaptureSuccessNotification = false
+                        }
+                    }
+                }
+                
+                Spacer()
+            }
+            
+            Spacer()
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.5), value: showCaptureSuccessNotification)
     }
 }
 

@@ -550,7 +550,7 @@ struct ContentView: View {
                                         .frame(width: overlayGeometry.size.width)
                                         .position(
                                             x: overlayGeometry.size.width / 2,
-                                            y: videoHeight * 0.20 // Positionner à 10% du haut
+                                            y: videoHeight * 0.20 // Positionner à 20% du haut
                                         )
                                 }
                                 .aspectRatio(9/16, contentMode: .fit)
@@ -2442,9 +2442,11 @@ struct ContentView: View {
                         let imageHeight = imageWidth / imageAspectRatio
                         
                         // Positionner l'image en haut de la vidéo (à 20% du haut)
+                        // Dans Core Animation, l'origine (0,0) est en bas à gauche, donc nous calculons la position Y
+                        // à partir du bas pour obtenir l'équivalent de 20% depuis le haut
                         titleImageLayer.frame = CGRect(
                             x: (sourceVideoTrack.naturalSize.width - imageWidth) / 2,
-                            y: sourceVideoTrack.naturalSize.height * 0.20, // Positionner à 20% du haut
+                            y: sourceVideoTrack.naturalSize.height * 0.90 - imageHeight, // 20% depuis le haut (80% depuis le bas)
                             width: imageWidth,
                             height: imageHeight
                         )

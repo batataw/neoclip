@@ -2230,388 +2230,549 @@ struct ContentView: View {
         let response = savePanel.runModal()
         print("Résultat du dialogue: \(response.rawValue)")
         
-        if response == .OK, let outputURL = savePanel.url {
-            print("URL de sortie sélectionnée: \(outputURL.path)")
+        if response == .OK, let finalOutputURL = savePanel.url {
+            print("URL de sortie sélectionnée: \(finalOutputURL.path)")
             
-            // Commencer l'export sans vérifier si le fichier existe déjà
+            // Vérifier si un fichier audio a été sélectionné
+            let hasMusicTrack = audioURL != nil
+            
+            // Si un fichier audio est présent, nous allons utiliser une URL temporaire pour l'export intermédiaire
+            let outputURL: URL
+            let tempURL: URL?
+            
+            if hasMusicTrack {
+                // Créer une URL temporaire pour la première étape d'export (sans musique)
+                let tempFileName = "temp_video_\(timestamp).mp4"
+                tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(tempFileName)
+                outputURL = tempURL!
+                print("Utilisation d'un fichier temporaire pour la première étape: \(outputURL.path)")
+            } else {
+                // Si pas de musique, on exporte directement vers l'URL finale
+                outputURL = finalOutputURL
+                tempURL = nil
+            }
+            
+            // Commencer l'export
             print("Début de l'export")
             isExportingVideo = true
             exportProgress = 0.0
-            
-            // Créer une composition pour l'export
-            let composition = AVMutableComposition()
-            
-            // Créer une piste vidéo dans la composition
-            guard let compositionVideoTrack = composition.addMutableTrack(
-                withMediaType: .video,
-                preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                isExportingVideo = false
-                return
-            }
-            
-            // Créer une piste audio dans la composition si nécessaire
-            let compositionAudioTrack = composition.addMutableTrack(
-                withMediaType: .audio,
-                preferredTrackID: kCMPersistentTrackID_Invalid)
             
             // Récupérer les pistes vidéo et audio de l'asset original
             let videoTracks = asset.tracks(withMediaType: .video)
             let audioTracks = asset.tracks(withMediaType: .audio)
             
             guard let sourceVideoTrack = videoTracks.first else {
-                isExportingVideo = false
+                DispatchQueue.main.async {
+                    self.isExportingVideo = false
+                    print("Échec de l'export vidéo: Aucune piste vidéo trouvée")
+                    self.alertType = .exportCompleted(message: "Échec de l'export vidéo: Aucune piste vidéo trouvée")
+                }
                 return
             }
             
-            // Récupérer la piste audio source si elle existe
-            let sourceAudioTrack = audioTracks.first
-            
-            // Créer un objet pour les instructions de composition vidéo
-            let videoCompositionInstructions = AVMutableVideoCompositionInstruction()
-            
-            // Durée totale de la vidéo exportée
-            var totalDuration: CMTime = .zero
-            
-            // Traiter chaque segment actif
-            for (index, segment) in activeSegments.enumerated() {
-                // Calculer les temps de début et de fin du segment
-                let startTime = CMTime(seconds: segment.startTime, preferredTimescale: 600)
-                let endTime = CMTime(seconds: segment.endTime + segment.durationAdjustment, preferredTimescale: 600)
-                let segmentTimeRange = CMTimeRange(start: startTime, end: endTime)
-                let segmentDuration = CMTimeSubtract(endTime, startTime)
-                
-                do {
-                    // Ajouter le segment vidéo à la composition
-                    try compositionVideoTrack.insertTimeRange(
-                        segmentTimeRange,
-                        of: sourceVideoTrack,
-                        at: totalDuration
-                    )
+            // Étape 1: Exporter la vidéo (sans musique externe si hasMusicTrack est vrai)
+            exportVideoWithoutExternalMusic(
+                asset: asset,
+                activeSegments: activeSegments,
+                sourceVideoTrack: sourceVideoTrack,
+                sourceAudioTrack: audioTracks.first,
+                outputURL: outputURL
+            ) { success, error in
+                if success {
+                    print("Export vidéo réussi")
                     
-                    // Ajouter le segment audio à la composition si disponible
-                    if let sourceAudioTrack = sourceAudioTrack, let compositionAudioTrack = compositionAudioTrack {
-                        try compositionAudioTrack.insertTimeRange(
-                            segmentTimeRange,
-                            of: sourceAudioTrack,
-                            at: totalDuration
-                        )
-                    }
-                    
-                    // Ajouter l'audio externe si disponible
-                    if let audioURL = audioURL, let audioAsset = AVAsset(url: audioURL) as? AVURLAsset, let compositionAudioTrack = compositionAudioTrack {
-                        let audioTracks = audioAsset.tracks(withMediaType: .audio)
-                        if let audioTrack = audioTracks.first {
-                            // Calculer la durée de l'audio à insérer
-                            let segmentDurationSeconds = segmentDuration.seconds
+                    // Si nous avons un fichier audio, procéder à l'étape 2
+                    if hasMusicTrack, let audioURL = self.audioURL, let tempURL = tempURL {
+                        print("Ajout de la musique au fichier exporté")
+                        self.exportProgress = 0.5 // 50% du processus total
+                        
+                        // Étape 2: Ajouter la musique à la vidéo exportée
+                        self.addMusicToVideo(
+                            videoURL: tempURL,
+                            audioURL: audioURL,
+                            outputURL: finalOutputURL
+                        ) { success, error in
+                            // Nettoyer le fichier temporaire
+                            try? FileManager.default.removeItem(at: tempURL)
                             
-                            // Si c'est le premier segment, on commence au début de l'audio
-                            // Sinon, on utilise une position proportionnelle dans l'audio
-                            let audioStartTime: CMTime
-                            let audioDuration: Double
-                            
-                            if index == 0 {
-                                // Premier segment: commencer au début de l'audio
-                                audioStartTime = .zero
-                                audioDuration = min(segmentDurationSeconds, audioAsset.duration.seconds)
-                            } else {
-                                // Segments suivants: calculer une position proportionnelle
-                                // Ou boucler l'audio si nécessaire
-                                let totalSegmentsDuration = activeSegments[0..<index]
-                                    .reduce(0.0) { $0 + ($1.endTime - $1.startTime + $1.durationAdjustment) }
+                            DispatchQueue.main.async {
+                                self.isExportingVideo = false
+                                self.exportProgress = 1.0
                                 
-                                // Si l'audio est plus court que la vidéo, on le boucle
-                                let audioPosition = totalSegmentsDuration.truncatingRemainder(dividingBy: audioAsset.duration.seconds)
-                                audioStartTime = CMTime(seconds: audioPosition, preferredTimescale: 600)
-                                
-                                // Calculer la durée disponible jusqu'à la fin de l'audio
-                                let remainingAudioDuration = audioAsset.duration.seconds - audioPosition
-                                
-                                if remainingAudioDuration >= segmentDurationSeconds {
-                                    // Si l'audio restant est suffisant pour ce segment
-                                    audioDuration = segmentDurationSeconds
+                                if success {
+                                    print("Export avec musique réussi")
+                                    self.alertType = .exportCompleted(message: "Export vidéo terminé avec succès")
+                                    withAnimation {
+                                        self.showExportSuccessNotification = true
+                                    }
                                 } else {
-                                    // Si l'audio restant ne couvre pas tout le segment,
-                                    // on utilise ce qui reste puis on boucle depuis le début
-                                    
-                                    // D'abord, insérer la partie restante de l'audio
-                                    let remainingAudioTimeRange = CMTimeRange(
-                                        start: audioStartTime,
-                                        duration: CMTime(seconds: remainingAudioDuration, preferredTimescale: 600)
-                                    )
-                                    
-                                    try compositionAudioTrack.insertTimeRange(
-                                        remainingAudioTimeRange,
-                                        of: audioTrack,
-                                        at: totalDuration
-                                    )
-                                    
-                                    // Ensuite, insérer le début de l'audio pour compléter le segment
-                                    let additionalDuration = segmentDurationSeconds - remainingAudioDuration
-                                    let additionalTimeRange = CMTimeRange(
-                                        start: .zero,
-                                        duration: CMTime(seconds: additionalDuration, preferredTimescale: 600)
-                                    )
-                                    
-                                    try compositionAudioTrack.insertTimeRange(
-                                        additionalTimeRange,
-                                        of: audioTrack,
-                                        at: CMTimeAdd(totalDuration, CMTime(seconds: remainingAudioDuration, preferredTimescale: 600))
-                                    )
-                                    
-                                    // Comme on a déjà inséré l'audio, on définit audioDuration à 0
-                                    // pour éviter une insertion supplémentaire
-                                    audioDuration = 0
+                                    print("Échec de l'ajout de musique: \(error?.localizedDescription ?? "Erreur inconnue")")
+                                    self.alertType = .exportCompleted(message: "Échec de l'ajout de musique: \(error?.localizedDescription ?? "Erreur inconnue")")
                                 }
                             }
-                            
-                            // Insérer l'audio si nécessaire (si on n'a pas déjà tout inséré)
-                            if audioDuration > 0 {
-                                let audioTimeRange = CMTimeRange(
-                                    start: audioStartTime,
-                                    duration: CMTime(seconds: audioDuration, preferredTimescale: 600)
-                                )
-                                
-                                try compositionAudioTrack.insertTimeRange(
-                                    audioTimeRange,
-                                    of: audioTrack,
-                                    at: totalDuration
-                                )
-                            }
                         }
-                    }
-                    
-                    // Mettre à jour la durée totale
-                    totalDuration = CMTimeAdd(totalDuration, segmentDuration)
-                    
-                    // Mettre à jour la progression
-                    exportProgress = Float(index + 1) / Float(activeSegments.count) * 0.5
-                    
-                } catch {
-                    print("Erreur lors de l'insertion du segment: \(error.localizedDescription)")
-                    isExportingVideo = false
-                    return
-                }
-            }
-            
-            // Créer une composition vidéo pour appliquer les effets
-            let videoComposition = AVMutableVideoComposition()
-            videoComposition.renderSize = CGSize(
-                width: sourceVideoTrack.naturalSize.width,
-                height: sourceVideoTrack.naturalSize.height
-            )
-            videoComposition.frameDuration = CMTime(value: 1, timescale: 30) // 30 FPS
-            
-            // Créer les instructions de composition vidéo
-            let instructions = AVMutableVideoCompositionInstruction()
-            instructions.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
-            
-            // Créer un layer instruction pour la piste vidéo
-            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionVideoTrack)
-            
-            // Appliquer les transformations en fonction de l'effet sélectionné
-            if selectedEffect == "ZOOM" {
-                applyZoomEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
-            } else if selectedEffect == "JUMP CUT" {
-                applyJumpCutEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
-            } else if selectedEffect == "MIX" {
-                applyMixEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
-            }
-            
-            // Ajouter l'instruction de layer à l'instruction de composition
-            instructions.layerInstructions = [layerInstruction]
-            videoComposition.instructions = [instructions]
-            
-            // Ajouter le titre si activé
-            if showTitleOverlay && !videoTitle.isEmpty {
-                // Générer l'image PNG du titre
-                if let titleImage = generateTitleOverlayImage() {
-                    // Convertir NSImage en CGImage
-                    if let tiffData = titleImage.tiffRepresentation,
-                       let bitmapImage = NSBitmapImageRep(data: tiffData),
-                       let cgImage = bitmapImage.cgImage {
-                        
-                        // Créer un calque pour l'image du titre
-                        let titleImageLayer = CALayer()
-                        titleImageLayer.contents = cgImage
-                        
-                        // Calculer les dimensions pour positionner l'image correctement
-                        let imageAspectRatio = titleImage.size.width / titleImage.size.height
-                        
-                        // Définir la largeur de l'image à 70% de la largeur de la vidéo, augmentée de 40% (20% + 20%)
-                        let imageWidth = sourceVideoTrack.naturalSize.width * 0.7 * 1.4
-                        let imageHeight = imageWidth / imageAspectRatio
-                        
-                        // Positionner l'image en haut de la vidéo (à 20% du haut)
-                        // Dans Core Animation, l'origine (0,0) est en bas à gauche, donc nous calculons la position Y
-                        // à partir du bas pour obtenir l'équivalent de 20% depuis le haut
-                        titleImageLayer.frame = CGRect(
-                            x: (sourceVideoTrack.naturalSize.width - imageWidth) / 2,
-                            y: sourceVideoTrack.naturalSize.height * 0.90 - imageHeight, // 20% depuis le haut (80% depuis le bas)
-                            width: imageWidth,
-                            height: imageHeight
-                        )
-                        
-                        // Déterminer la durée d'affichage du titre
-                        var titleDisplayDuration: CMTime
-                        switch titleDuration {
-                        case "5s":
-                            titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
-                        case "10s":
-                            titleDisplayDuration = CMTime(seconds: 10, preferredTimescale: 600)
-                        case "Tout":
-                            titleDisplayDuration = totalDuration
-                        default:
-                            titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
-                        }
-                        titleDisplayDuration = CMTimeMinimum(titleDisplayDuration, totalDuration)
-                        
-                        // Créer un calque parent pour contenir l'image
-                        let parentLayer = CALayer()
-                        parentLayer.frame = CGRect(
-                            x: 0,
-                            y: 0,
-                            width: sourceVideoTrack.naturalSize.width,
-                            height: sourceVideoTrack.naturalSize.height
-                        )
-                        
-                        // Ajouter le calque de l'image au calque parent
-                        parentLayer.addSublayer(titleImageLayer)
-                        
-                        // Créer une animation pour l'opacité (fondu)
-                        let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
-                        fadeInAnimation.fromValue = 0.0
-                        fadeInAnimation.toValue = 1.0
-                        fadeInAnimation.duration = 0.5
-                        fadeInAnimation.beginTime = 0
-                        fadeInAnimation.fillMode = .forwards
-                        fadeInAnimation.isRemovedOnCompletion = false
-                        
-                        let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
-                        fadeOutAnimation.fromValue = 1.0
-                        fadeOutAnimation.toValue = 0.0
-                        fadeOutAnimation.duration = 0.5
-                        fadeOutAnimation.beginTime = titleDisplayDuration.seconds - 0.5
-                        fadeOutAnimation.fillMode = .forwards
-                        fadeOutAnimation.isRemovedOnCompletion = false
-                        
-                        // Appliquer les animations
-                        titleImageLayer.add(fadeInAnimation, forKey: "fadeIn")
-                        titleImageLayer.add(fadeOutAnimation, forKey: "fadeOut")
-                        
-                        // Créer un calque vidéo pour la composition
-                        let videoLayer = CALayer()
-                        videoLayer.frame = CGRect(
-                            x: 0,
-                            y: 0,
-                            width: sourceVideoTrack.naturalSize.width,
-                            height: sourceVideoTrack.naturalSize.height
-                        )
-                        
-                        // Créer un calque racine pour contenir tous les autres calques
-                        let outputLayer = CALayer()
-                        outputLayer.frame = CGRect(
-                            x: 0,
-                            y: 0,
-                            width: sourceVideoTrack.naturalSize.width,
-                            height: sourceVideoTrack.naturalSize.height
-                        )
-                        
-                        // Ajouter les calques dans l'ordre (vidéo puis titre)
-                        outputLayer.addSublayer(videoLayer)
-                        outputLayer.addSublayer(parentLayer)
-                        
-                        // Configurer l'animation du calque
-                        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
-                            postProcessingAsVideoLayer: videoLayer,
-                            in: outputLayer
-                        )
-                    }
-                }
-            }
-            
-            // Créer une session d'export
-            print("Création de la session d'export")
-            guard let exportSession = AVAssetExportSession(
-                asset: composition,
-                presetName: AVAssetExportPresetHighestQuality
-            ) else {
-                print("Échec de la création de la session d'export")
-                isExportingVideo = false
-                return
-            }
-            
-            // Configurer la session d'export
-            print("Configuration de la session d'export avec URL: \(outputURL.path)")
-            exportSession.outputURL = outputURL
-            exportSession.outputFileType = .mp4
-            exportSession.videoComposition = videoComposition
-            
-            // Configurer l'audio mix si nécessaire
-            if let compositionAudioTrack = compositionAudioTrack {
-                print("Configuration de l'audio mix")
-                let audioMix = AVMutableAudioMix()
-                let audioMixInputParameters = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
-                
-                // Appliquer le volume audio
-                if let audioURL = audioURL {
-                    // Si un audio externe est utilisé, appliquer le volume défini par l'utilisateur
-                    audioMixInputParameters.setVolume(audioVolume, at: .zero)
-                } else {
-                    // Sinon, utiliser le volume normal pour l'audio de la vidéo
-                    audioMixInputParameters.setVolume(1.0, at: .zero)
-                }
-                
-                audioMix.inputParameters = [audioMixInputParameters]
-                exportSession.audioMix = audioMix
-            }
-            
-            // Ajouter un observateur de progression
-            print("Ajout de l'observateur de progression")
-            let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                DispatchQueue.main.async {
-                    // La progression de l'export commence à 50% (après la préparation)
-                    self.exportProgress = 0.5 + Float(exportSession.progress) * 0.5
-                    print("Progression de l'export: \(self.exportProgress)")
-                }
-            }
-            
-            // Démarrer l'export
-            print("Démarrage de l'export asynchrone")
-            DispatchQueue.global(qos: .userInitiated).async {
-                exportSession.exportAsynchronously {
-                    // Arrêter le timer de progression
-                    print("Export asynchrone terminé")
-                    progressTimer.invalidate()
-                    
-                    DispatchQueue.main.async {
-                        print("Export terminé avec le statut: \(exportSession.status.rawValue)")
-                        if let error = exportSession.error {
-                            print("Erreur d'export: \(error.localizedDescription)")
-                        }
-                        
-                        self.isExportingVideo = false
-                        self.exportProgress = 1.0
-                        
-                        switch exportSession.status {
-                        case .completed:
+                    } else {
+                        // Si pas de musique, on a déjà terminé
+                        DispatchQueue.main.async {
+                            self.isExportingVideo = false
+                            self.exportProgress = 1.0
                             print("Export réussi")
                             self.alertType = .exportCompleted(message: "Export vidéo terminé avec succès")
                             withAnimation {
                                 self.showExportSuccessNotification = true
                             }
-                        case .failed:
-                            print("Export échoué: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
-                            self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
-                        case .cancelled:
-                            print("Export annulé")
-                            self.alertType = .exportCompleted(message: "Export vidéo annulé")
-                        default:
-                            print("Export terminé avec un statut inattendu: \(exportSession.status.rawValue)")
-                            self.alertType = .exportCompleted(message: "Export vidéo terminé avec le statut: \(exportSession.status.rawValue)")
                         }
+                    }
+                } else {
+                    // Erreur lors de l'export vidéo
+                    DispatchQueue.main.async {
+                        self.isExportingVideo = false
+                        print("Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
+                        self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
                     }
                 }
             }
+        }
+    }
+    
+    // Nouvelle fonction pour exporter la vidéo sans musique externe
+    private func exportVideoWithoutExternalMusic(
+        asset: AVAsset,
+        activeSegments: [TranscriptionSegment],
+        sourceVideoTrack: AVAssetTrack,
+        sourceAudioTrack: AVAssetTrack?,
+        outputURL: URL,
+        completion: @escaping (Bool, Error?) -> Void
+    ) {
+        // Créer une composition pour l'export
+        let composition = AVMutableComposition()
+        
+        // Créer une piste vidéo dans la composition
+        guard let compositionVideoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            completion(false, NSError(domain: "CineBot", code: 1, userInfo: [NSLocalizedDescriptionKey: "Échec de la création de la piste vidéo"]))
+            return
+        }
+        
+        // Créer une piste audio dans la composition pour l'audio original de la vidéo
+        let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid)
+        
+        // Durée totale de la vidéo exportée
+        var totalDuration: CMTime = .zero
+        
+        // Traiter chaque segment actif
+        for (index, segment) in activeSegments.enumerated() {
+            // Calculer les temps de début et de fin du segment
+            let startTime = CMTime(seconds: segment.startTime, preferredTimescale: 600)
+            let endTime = CMTime(seconds: segment.endTime + segment.durationAdjustment, preferredTimescale: 600)
+            let segmentTimeRange = CMTimeRange(start: startTime, end: endTime)
+            let segmentDuration = CMTimeSubtract(endTime, startTime)
+            
+            do {
+                // Ajouter le segment vidéo à la composition
+                try compositionVideoTrack.insertTimeRange(
+                    segmentTimeRange,
+                    of: sourceVideoTrack,
+                    at: totalDuration
+                )
+                
+                // Ajouter le segment audio à la composition si disponible
+                if let sourceAudioTrack = sourceAudioTrack, let compositionAudioTrack = compositionAudioTrack {
+                    try compositionAudioTrack.insertTimeRange(
+                        segmentTimeRange,
+                        of: sourceAudioTrack,
+                        at: totalDuration
+                    )
+                }
+                
+                // Mettre à jour la durée totale
+                totalDuration = CMTimeAdd(totalDuration, segmentDuration)
+                
+                // Mettre à jour la progression
+                DispatchQueue.main.async {
+                    self.exportProgress = Float(index + 1) / Float(activeSegments.count) * 0.25
+                }
+                
+            } catch {
+                print("Erreur lors de l'insertion du segment: \(error.localizedDescription)")
+                completion(false, error)
+                return
+            }
+        }
+        
+        // Créer une composition vidéo pour appliquer les effets
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = CGSize(
+            width: sourceVideoTrack.naturalSize.width,
+            height: sourceVideoTrack.naturalSize.height
+        )
+        videoComposition.frameDuration = CMTime(value: 1, timescale: 30) // 30 FPS
+        
+        // Créer les instructions de composition vidéo
+        let instructions = AVMutableVideoCompositionInstruction()
+        instructions.timeRange = CMTimeRange(start: .zero, duration: totalDuration)
+        
+        // Créer un layer instruction pour la piste vidéo
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionVideoTrack)
+        
+        // Appliquer les transformations en fonction de l'effet sélectionné
+        if selectedEffect == "ZOOM" {
+            applyZoomEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+        } else if selectedEffect == "JUMP CUT" {
+            applyJumpCutEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+        } else if selectedEffect == "MIX" {
+            applyMixEffectForExport(sourceVideoTrack: sourceVideoTrack, activeSegments: activeSegments, layerInstruction: layerInstruction)
+        }
+        
+        // Ajouter l'instruction de layer à l'instruction de composition
+        instructions.layerInstructions = [layerInstruction]
+        videoComposition.instructions = [instructions]
+        
+        // Ajouter le titre si activé
+        if showTitleOverlay && !videoTitle.isEmpty {
+            // Générer l'image PNG du titre
+            if let titleImage = generateTitleOverlayImage() {
+                // Convertir NSImage en CGImage
+                if let tiffData = titleImage.tiffRepresentation,
+                   let bitmapImage = NSBitmapImageRep(data: tiffData),
+                   let cgImage = bitmapImage.cgImage {
+                    
+                    // Créer un calque pour l'image du titre
+                    let titleImageLayer = CALayer()
+                    titleImageLayer.contents = cgImage
+                    
+                    // Calculer les dimensions pour positionner l'image correctement
+                    let imageAspectRatio = titleImage.size.width / titleImage.size.height
+                    
+                    // Définir la largeur de l'image à 70% de la largeur de la vidéo, augmentée de 40% (20% + 20%)
+                    let imageWidth = sourceVideoTrack.naturalSize.width * 0.7 * 1.4
+                    let imageHeight = imageWidth / imageAspectRatio
+                    
+                    // Positionner l'image en haut de la vidéo (à 20% du haut)
+                    // Dans Core Animation, l'origine (0,0) est en bas à gauche, donc nous calculons la position Y
+                    // à partir du bas pour obtenir l'équivalent de 20% depuis le haut
+                    titleImageLayer.frame = CGRect(
+                        x: (sourceVideoTrack.naturalSize.width - imageWidth) / 2,
+                        y: sourceVideoTrack.naturalSize.height * 0.90 - imageHeight, // 20% depuis le haut (80% depuis le bas)
+                        width: imageWidth,
+                        height: imageHeight
+                    )
+                    
+                    // Déterminer la durée d'affichage du titre
+                    var titleDisplayDuration: CMTime
+                    switch titleDuration {
+                    case "5s":
+                        titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                    case "10s":
+                        titleDisplayDuration = CMTime(seconds: 10, preferredTimescale: 600)
+                    case "Tout":
+                        titleDisplayDuration = totalDuration
+                    default:
+                        titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                    }
+                    titleDisplayDuration = CMTimeMinimum(titleDisplayDuration, totalDuration)
+                    
+                    // Créer un calque parent pour contenir l'image
+                    let parentLayer = CALayer()
+                    parentLayer.frame = CGRect(
+                        x: 0,
+                        y: 0,
+                        width: sourceVideoTrack.naturalSize.width,
+                        height: sourceVideoTrack.naturalSize.height
+                    )
+                    
+                    // Ajouter le calque de l'image au calque parent
+                    parentLayer.addSublayer(titleImageLayer)
+                    
+                    // Créer une animation pour l'opacité (fondu)
+                    let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
+                    fadeInAnimation.fromValue = 0.0
+                    fadeInAnimation.toValue = 1.0
+                    fadeInAnimation.duration = 0.5
+                    fadeInAnimation.beginTime = 0
+                    fadeInAnimation.fillMode = .forwards
+                    fadeInAnimation.isRemovedOnCompletion = false
+                    
+                    let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
+                    fadeOutAnimation.fromValue = 1.0
+                    fadeOutAnimation.toValue = 0.0
+                    fadeOutAnimation.duration = 0.5
+                    fadeOutAnimation.beginTime = titleDisplayDuration.seconds - 0.5
+                    fadeOutAnimation.fillMode = .forwards
+                    fadeOutAnimation.isRemovedOnCompletion = false
+                    
+                    // Appliquer les animations
+                    titleImageLayer.add(fadeInAnimation, forKey: "fadeIn")
+                    titleImageLayer.add(fadeOutAnimation, forKey: "fadeOut")
+                    
+                    // Créer un calque vidéo pour la composition
+                    let videoLayer = CALayer()
+                    videoLayer.frame = CGRect(
+                        x: 0,
+                        y: 0,
+                        width: sourceVideoTrack.naturalSize.width,
+                        height: sourceVideoTrack.naturalSize.height
+                    )
+                    
+                    // Créer un calque racine pour contenir tous les autres calques
+                    let outputLayer = CALayer()
+                    outputLayer.frame = CGRect(
+                        x: 0,
+                        y: 0,
+                        width: sourceVideoTrack.naturalSize.width,
+                        height: sourceVideoTrack.naturalSize.height
+                    )
+                    
+                    // Ajouter les calques dans l'ordre (vidéo puis titre)
+                    outputLayer.addSublayer(videoLayer)
+                    outputLayer.addSublayer(parentLayer)
+                    
+                    // Configurer l'animation du calque
+                    videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+                        postProcessingAsVideoLayer: videoLayer,
+                        in: outputLayer
+                    )
+                }
+            }
+        }
+        
+        // Créer une session d'export
+        print("Création de la session d'export")
+        guard let exportSession = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetHighestQuality
+        ) else {
+            print("Échec de la création de la session d'export")
+            completion(false, NSError(domain: "CineBot", code: 2, userInfo: [NSLocalizedDescriptionKey: "Échec de la création de la session d'export"]))
+            return
+        }
+        
+        // Configurer la session d'export
+        print("Configuration de la session d'export avec URL: \(outputURL.path)")
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .mp4
+        exportSession.videoComposition = videoComposition
+        
+        // Configurer l'audio mix pour l'audio original (pas la musique externe)
+        if let compositionAudioTrack = compositionAudioTrack {
+            print("Configuration de l'audio mix pour l'audio original")
+            let audioMix = AVMutableAudioMix()
+            let audioMixInputParameters = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
+            
+            // Utiliser le volume normal pour l'audio de la vidéo
+            audioMixInputParameters.setVolume(1.0, at: .zero)
+            
+            audioMix.inputParameters = [audioMixInputParameters]
+            exportSession.audioMix = audioMix
+        }
+        
+        // Ajouter un observateur de progression
+        print("Ajout de l'observateur de progression")
+        let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            DispatchQueue.main.async {
+                // La progression de l'export va de 25% à 50% du processus total (première étape)
+                self.exportProgress = 0.25 + Float(exportSession.progress) * 0.25
+            }
+        }
+        
+        // Démarrer l'export
+        print("Démarrage de l'export asynchrone")
+        exportSession.exportAsynchronously {
+            // Arrêter le timer de progression
+            progressTimer.invalidate()
+            
+            print("Export asynchrone terminé avec le statut: \(exportSession.status.rawValue)")
+            if let error = exportSession.error {
+                print("Erreur d'export: \(error.localizedDescription)")
+                completion(false, error)
+                return
+            }
+            
+            switch exportSession.status {
+            case .completed:
+                print("Export réussi")
+                completion(true, nil)
+            case .failed:
+                print("Export échoué: \(exportSession.error?.localizedDescription ?? "Erreur inconnue")")
+                completion(false, exportSession.error)
+            case .cancelled:
+                print("Export annulé")
+                completion(false, NSError(domain: "CineBot", code: 3, userInfo: [NSLocalizedDescriptionKey: "Export annulé"]))
+            default:
+                print("Export terminé avec un statut inattendu: \(exportSession.status.rawValue)")
+                completion(false, NSError(domain: "CineBot", code: 4, userInfo: [NSLocalizedDescriptionKey: "Export terminé avec un statut inattendu: \(exportSession.status.rawValue)"]))
+            }
+        }
+    }
+    
+    // Nouvelle fonction pour ajouter la musique à la vidéo déjà exportée
+    private func addMusicToVideo(
+        videoURL: URL,
+        audioURL: URL,
+        outputURL: URL,
+        completion: @escaping (Bool, Error?) -> Void
+    ) {
+        // Créer les assets pour la vidéo et l'audio
+        let videoAsset = AVAsset(url: videoURL)
+        let audioAsset = AVAsset(url: audioURL)
+        
+        // Créer une nouvelle composition
+        let composition = AVMutableComposition()
+        
+        // Ajouter la piste vidéo
+        guard let compositionVideoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid),
+              let videoTrack = videoAsset.tracks(withMediaType: .video).first
+        else {
+            completion(false, NSError(domain: "CineBot", code: 5, userInfo: [NSLocalizedDescriptionKey: "Échec de la création de la piste vidéo"]))
+            return
+        }
+        
+        // Ajouter la piste audio originale de la vidéo
+        let compositionOriginalAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid)
+        
+        // Ajouter la piste audio externe (musique)
+        guard let compositionMusicTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid),
+              let musicTrack = audioAsset.tracks(withMediaType: .audio).first
+        else {
+            completion(false, NSError(domain: "CineBot", code: 6, userInfo: [NSLocalizedDescriptionKey: "Échec de la création de la piste audio"]))
+            return
+        }
+        
+        do {
+            // Insérer la piste vidéo dans la composition
+            try compositionVideoTrack.insertTimeRange(
+                CMTimeRange(start: .zero, duration: videoAsset.duration),
+                of: videoTrack,
+                at: .zero
+            )
+            
+            // Insérer l'audio original de la vidéo si disponible
+            if let originalAudioTrack = videoAsset.tracks(withMediaType: .audio).first,
+               let compositionOriginalAudioTrack = compositionOriginalAudioTrack {
+                try compositionOriginalAudioTrack.insertTimeRange(
+                    CMTimeRange(start: .zero, duration: videoAsset.duration),
+                    of: originalAudioTrack,
+                    at: .zero
+                )
+            }
+            
+            // Insérer la musique dans la composition
+            // Si la musique est plus longue que la vidéo, on la tronque
+            // Si la musique est plus courte, on la boucle
+            let videoDuration = videoAsset.duration.seconds
+            let musicDuration = audioAsset.duration.seconds
+            
+            if musicDuration >= videoDuration {
+                // La musique est plus longue ou égale à la vidéo, on la tronque
+                try compositionMusicTrack.insertTimeRange(
+                    CMTimeRange(
+                        start: .zero,
+                        duration: CMTime(seconds: videoDuration, preferredTimescale: 600)
+                    ),
+                    of: musicTrack,
+                    at: .zero
+                )
+            } else {
+                // La musique est plus courte, on la boucle
+                var currentTime: CMTime = .zero
+                while currentTime.seconds < videoDuration {
+                    let remainingTime = videoDuration - currentTime.seconds
+                    let insertDuration = min(remainingTime, musicDuration)
+                    
+                    try compositionMusicTrack.insertTimeRange(
+                        CMTimeRange(
+                            start: .zero,
+                            duration: CMTime(seconds: insertDuration, preferredTimescale: 600)
+                        ),
+                        of: musicTrack,
+                        at: currentTime
+                    )
+                    
+                    currentTime = CMTimeAdd(
+                        currentTime,
+                        CMTime(seconds: insertDuration, preferredTimescale: 600)
+                    )
+                }
+            }
+            
+            // Créer une session d'export
+            guard let exportSession = AVAssetExportSession(
+                asset: composition,
+                presetName: AVAssetExportPresetHighestQuality
+            ) else {
+                completion(false, NSError(domain: "CineBot", code: 7, userInfo: [NSLocalizedDescriptionKey: "Échec de la création de la session d'export finale"]))
+                return
+            }
+            
+            // Configurer l'audio mix pour ajuster les volumes
+            let audioMix = AVMutableAudioMix()
+            var audioMixParameters: [AVMutableAudioMixInputParameters] = []
+            
+            // Configurer le volume de la musique externe
+            let musicMixParameters = AVMutableAudioMixInputParameters(track: compositionMusicTrack)
+            musicMixParameters.setVolume(audioVolume, at: .zero)
+            audioMixParameters.append(musicMixParameters)
+            
+            // Configurer le volume de l'audio original si disponible
+            if let originalAudioTrack = compositionOriginalAudioTrack {
+                let originalAudioMixParameters = AVMutableAudioMixInputParameters(track: originalAudioTrack)
+                originalAudioMixParameters.setVolume(1.0, at: .zero)
+                audioMixParameters.append(originalAudioMixParameters)
+            }
+            
+            audioMix.inputParameters = audioMixParameters
+            exportSession.audioMix = audioMix
+            
+            // Récupérer la composition vidéo si elle existe
+            if let asset = videoAsset as? AVComposition,
+               let videoComposition = asset.value(forKey: "videoComposition") as? AVVideoComposition {
+                exportSession.videoComposition = videoComposition
+            }
+            
+            // Configurer la sortie
+            exportSession.outputURL = outputURL
+            exportSession.outputFileType = .mp4
+            
+            // Ajouter un observateur de progression
+            let progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+                DispatchQueue.main.async {
+                    // La progression de l'export va de 50% à 100% du processus total (deuxième étape)
+                    self.exportProgress = 0.5 + Float(exportSession.progress) * 0.5
+                }
+            }
+            
+            // Démarrer l'export
+            exportSession.exportAsynchronously {
+                // Arrêter le timer de progression
+                progressTimer.invalidate()
+                
+                if let error = exportSession.error {
+                    completion(false, error)
+                    return
+                }
+                
+                switch exportSession.status {
+                case .completed:
+                    completion(true, nil)
+                case .failed:
+                    completion(false, exportSession.error)
+                case .cancelled:
+                    completion(false, NSError(domain: "CineBot", code: 8, userInfo: [NSLocalizedDescriptionKey: "Export final annulé"]))
+                default:
+                    completion(false, NSError(domain: "CineBot", code: 9, userInfo: [NSLocalizedDescriptionKey: "Export final terminé avec un statut inattendu: \(exportSession.status.rawValue)"]))
+                }
+            }
+        } catch {
+            completion(false, error)
         }
     }
 

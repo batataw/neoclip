@@ -1,0 +1,124 @@
+# Fixing Compilation Errors in ContentView.swift
+
+Below are solutions for each of the reported errors. Since the line numbers in the error messages don't match the current state of the file, you'll need to locate the specific instances in your code and apply these fixes.
+
+## Error 1: Type 'UTType' has no member 'aac'
+
+If you're trying to specify AAC audio files in an NSOpenPanel or NSSavePanel:
+
+```swift
+// INCORRECT
+openPanel.allowedContentTypes = [UTType.wav, UTType.mp3, UTType.aac]
+
+// CORRECTED - Replace UTType.aac with UTType.audio
+openPanel.allowedContentTypes = [UTType.wav, UTType.mp3, UTType.audio]
+```
+
+## Error 2: Value of type 'AVAsset' has no member 'loadValuesAndReturnError'
+
+Replace any instances of `loadValuesAndReturnError` with the proper asynchronous loading method:
+
+```swift
+// INCORRECT
+let error: NSError?
+if !videoAsset.loadValuesAndReturnError(&error, forKeys: ["tracks"]) {
+    // handle error
+}
+
+// CORRECTED
+videoAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
+    var error: NSError?
+    let status = videoAsset.statusOfValue(forKey: "tracks", error: &error)
+    
+    if status != .loaded {
+        // handle error
+        return
+    }
+    
+    // continue with your code here
+}
+```
+
+## Error 3: Type 'ContentView.AlertType?' has no member 'generic'
+
+If you're trying to display a generic alert, use one of the existing AlertType cases:
+
+```swift
+// INCORRECT
+self.alertType = .generic(message: "Error message")
+
+// CORRECTED - Use the exportCompleted case or another appropriate case
+self.alertType = .exportCompleted(message: "Error: Operation failed")
+```
+
+## Errors 4-6: Cannot find 'activeSegments' in scope
+
+Make sure your effect functions have activeSegments as a parameter and that you're passing it when calling the function:
+
+```swift
+// Make sure the function takes activeSegments as a parameter
+private func applyZoomEffectForExport(
+    sourceVideoTrack: AVAssetTrack, 
+    activeSegments: [TranscriptionSegment], 
+    layerInstruction: AVMutableVideoCompositionLayerInstruction
+) {
+    // Implementation...
+}
+
+// When calling it, make sure to pass activeSegments
+applyZoomEffectForExport(
+    sourceVideoTrack: sourceVideoTrack,
+    activeSegments: activeSegments, // Make sure this is in scope
+    layerInstruction: layerInstruction
+)
+```
+
+## Error 7: Cannot find 'captureTitleToImage' in scope
+
+You might have renamed a function. Use the correct function name:
+
+```swift
+// INCORRECT
+if let titleImage = captureTitleToImage() {
+    // code using titleImage
+}
+
+// CORRECTED - Use the correct function name (like generateTitleOverlayImage)
+if let titleImage = generateTitleOverlayImage() {
+    // code using titleImage
+}
+```
+
+## Errors 8-10: 'nil' requires a contextual type
+
+Provide explicit types when using nil:
+
+```swift
+// INCORRECT
+completion(true, nil)  // nil has no context here
+
+// CORRECTED - Provide explicit type for nil
+completion(true, nil as Error?)
+
+// OR
+let error: Error? = nil
+completion(true, error)
+```
+
+For multiple nil values that need context:
+
+```swift
+// INCORRECT
+someFunction(nil, nil, nil)
+
+// CORRECTED
+someFunction(nil as Data?, nil as String?, nil as NSError?)
+
+// OR
+let param1: Data? = nil
+let param2: String? = nil
+let param3: NSError? = nil
+someFunction(param1, param2, param3)
+```
+
+Apply these fixes to the appropriate places in your code. If you continue having issues with specific parts, please provide those code sections for more targeted assistance. 

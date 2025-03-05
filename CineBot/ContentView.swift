@@ -79,8 +79,8 @@ struct ContentView: View {
     @State private var isGeneratingContent: Bool = false
     @State private var showTitleOverlay: Bool = false
     @State private var titleBackgroundColor: Color = .blue
-    @State private var titleFontSize: Double = 24
-    @State private var titleBorderWidth: Double = 2
+    @State private var titleFontSize: Double = 36
+    @State private var titleBorderWidth: Double = 10
     @State private var titleDuration: String = "5s"  // Options: "5s", "10s", "Tout"
     @State private var titleFontName: String = "System" // Police par défaut
     @State private var isExportingVideo: Bool = false // Variable pour suivre l'état de l'export
@@ -550,7 +550,7 @@ struct ContentView: View {
                                         .frame(width: overlayGeometry.size.width)
                                         .position(
                                             x: overlayGeometry.size.width / 2,
-                                            y: videoHeight * 0.15 // Positionner à 15% du haut
+                                            y: videoHeight * 0.20 // Positionner à 10% du haut
                                         )
                                 }
                                 .aspectRatio(9/16, contentMode: .fit)
@@ -587,8 +587,8 @@ struct ContentView: View {
         // Utiliser une largeur de référence de 500 points
         let scaleFactor = max(0.5, min(1.2, videoWidth / 500))
         
-        // Augmenter le facteur d'échelle de 20%
-        let enhancedScaleFactor = scaleFactor * 1.2
+        // Augmenter le facteur d'échelle de 40% (20% + 20%)
+        let enhancedScaleFactor = scaleFactor * 1.4
         
         // Calculer la largeur maximale du titre (70% de la largeur du conteneur pour un cadre plus grand)
         let titleMaxWidth = videoWidth * 0.7
@@ -2423,121 +2423,108 @@ struct ContentView: View {
             
             // Ajouter le titre si activé
             if showTitleOverlay && !videoTitle.isEmpty {
-                // Créer un calque pour le titre
-                let titleLayer = CATextLayer()
-                titleLayer.string = videoTitle
-                titleLayer.font = CTFontCreateWithName(titleFontName == "System" ? "Helvetica" as CFString : titleFontName as CFString, titleFontSize, nil)
-                titleLayer.fontSize = titleFontSize
-                titleLayer.alignmentMode = .center
-                titleLayer.foregroundColor = CGColor.white
-                titleLayer.isWrapped = true
-                
-                // Calculer la taille du texte
-                let textSize = (videoTitle as NSString).size(withAttributes: [
-                    NSAttributedString.Key.font: NSFont(name: titleFontName == "System" ? "Helvetica" : titleFontName, size: CGFloat(titleFontSize)) ?? NSFont.systemFont(ofSize: CGFloat(titleFontSize))
-                ])
-                
-                // Créer un fond pour le titre
-                let backgroundLayer = CALayer()
-                backgroundLayer.backgroundColor = titleBackgroundColor.cgColor?.copy(alpha: 0.8)
-                
-                // Définir les dimensions du fond (un peu plus grand que le texte)
-                let padding: CGFloat = 20
-                backgroundLayer.frame = CGRect(
-                    x: (sourceVideoTrack.naturalSize.width - textSize.width - padding * 2) / 2,
-                    y: sourceVideoTrack.naturalSize.height * 0.85, // Positionner en haut
-                    width: textSize.width + padding * 2,
-                    height: textSize.height + padding * 2
-                )
-                backgroundLayer.cornerRadius = 10
-                backgroundLayer.borderWidth = titleBorderWidth
-                backgroundLayer.borderColor = CGColor.white
-                
-                // Positionner le texte sur le fond
-                titleLayer.frame = CGRect(
-                    x: backgroundLayer.frame.origin.x + padding,
-                    y: backgroundLayer.frame.origin.y + padding / 2,
-                    width: textSize.width,
-                    height: textSize.height
-                )
-                
-                // Déterminer la durée d'affichage du titre
-                var titleDisplayDuration: CMTime
-                switch titleDuration {
-                case "5s":
-                    titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
-                case "10s":
-                    titleDisplayDuration = CMTime(seconds: 10, preferredTimescale: 600)
-                case "Tout":
-                    titleDisplayDuration = totalDuration
-                default:
-                    titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                // Générer l'image PNG du titre
+                if let titleImage = generateTitleOverlayImage() {
+                    // Convertir NSImage en CGImage
+                    if let tiffData = titleImage.tiffRepresentation,
+                       let bitmapImage = NSBitmapImageRep(data: tiffData),
+                       let cgImage = bitmapImage.cgImage {
+                        
+                        // Créer un calque pour l'image du titre
+                        let titleImageLayer = CALayer()
+                        titleImageLayer.contents = cgImage
+                        
+                        // Calculer les dimensions pour positionner l'image correctement
+                        let imageAspectRatio = titleImage.size.width / titleImage.size.height
+                        
+                        // Définir la largeur de l'image à 70% de la largeur de la vidéo, augmentée de 40% (20% + 20%)
+                        let imageWidth = sourceVideoTrack.naturalSize.width * 0.7 * 1.4
+                        let imageHeight = imageWidth / imageAspectRatio
+                        
+                        // Positionner l'image en haut de la vidéo (à 20% du haut)
+                        titleImageLayer.frame = CGRect(
+                            x: (sourceVideoTrack.naturalSize.width - imageWidth) / 2,
+                            y: sourceVideoTrack.naturalSize.height * 0.20, // Positionner à 20% du haut
+                            width: imageWidth,
+                            height: imageHeight
+                        )
+                        
+                        // Déterminer la durée d'affichage du titre
+                        var titleDisplayDuration: CMTime
+                        switch titleDuration {
+                        case "5s":
+                            titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                        case "10s":
+                            titleDisplayDuration = CMTime(seconds: 10, preferredTimescale: 600)
+                        case "Tout":
+                            titleDisplayDuration = totalDuration
+                        default:
+                            titleDisplayDuration = CMTime(seconds: 5, preferredTimescale: 600)
+                        }
+                        titleDisplayDuration = CMTimeMinimum(titleDisplayDuration, totalDuration)
+                        
+                        // Créer un calque parent pour contenir l'image
+                        let parentLayer = CALayer()
+                        parentLayer.frame = CGRect(
+                            x: 0,
+                            y: 0,
+                            width: sourceVideoTrack.naturalSize.width,
+                            height: sourceVideoTrack.naturalSize.height
+                        )
+                        
+                        // Ajouter le calque de l'image au calque parent
+                        parentLayer.addSublayer(titleImageLayer)
+                        
+                        // Créer une animation pour l'opacité (fondu)
+                        let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
+                        fadeInAnimation.fromValue = 0.0
+                        fadeInAnimation.toValue = 1.0
+                        fadeInAnimation.duration = 0.5
+                        fadeInAnimation.beginTime = 0
+                        fadeInAnimation.fillMode = .forwards
+                        fadeInAnimation.isRemovedOnCompletion = false
+                        
+                        let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
+                        fadeOutAnimation.fromValue = 1.0
+                        fadeOutAnimation.toValue = 0.0
+                        fadeOutAnimation.duration = 0.5
+                        fadeOutAnimation.beginTime = titleDisplayDuration.seconds - 0.5
+                        fadeOutAnimation.fillMode = .forwards
+                        fadeOutAnimation.isRemovedOnCompletion = false
+                        
+                        // Appliquer les animations
+                        titleImageLayer.add(fadeInAnimation, forKey: "fadeIn")
+                        titleImageLayer.add(fadeOutAnimation, forKey: "fadeOut")
+                        
+                        // Créer un calque vidéo pour la composition
+                        let videoLayer = CALayer()
+                        videoLayer.frame = CGRect(
+                            x: 0,
+                            y: 0,
+                            width: sourceVideoTrack.naturalSize.width,
+                            height: sourceVideoTrack.naturalSize.height
+                        )
+                        
+                        // Créer un calque racine pour contenir tous les autres calques
+                        let outputLayer = CALayer()
+                        outputLayer.frame = CGRect(
+                            x: 0,
+                            y: 0,
+                            width: sourceVideoTrack.naturalSize.width,
+                            height: sourceVideoTrack.naturalSize.height
+                        )
+                        
+                        // Ajouter les calques dans l'ordre (vidéo puis titre)
+                        outputLayer.addSublayer(videoLayer)
+                        outputLayer.addSublayer(parentLayer)
+                        
+                        // Configurer l'animation du calque
+                        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+                            postProcessingAsVideoLayer: videoLayer,
+                            in: outputLayer
+                        )
+                    }
                 }
-                titleDisplayDuration = CMTimeMinimum(titleDisplayDuration, totalDuration)
-                
-                // Créer un calque parent pour contenir le fond et le texte
-                let parentLayer = CALayer()
-                parentLayer.frame = CGRect(
-                    x: 0,
-                    y: 0,
-                    width: sourceVideoTrack.naturalSize.width,
-                    height: sourceVideoTrack.naturalSize.height
-                )
-                
-                // Ajouter les calques dans l'ordre (fond puis texte)
-                parentLayer.addSublayer(backgroundLayer)
-                parentLayer.addSublayer(titleLayer)
-                
-                // Créer une animation pour l'opacité (fondu)
-                let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
-                fadeInAnimation.fromValue = 0.0
-                fadeInAnimation.toValue = 1.0
-                fadeInAnimation.duration = 0.5
-                fadeInAnimation.beginTime = 0
-                fadeInAnimation.fillMode = .forwards
-                fadeInAnimation.isRemovedOnCompletion = false
-                
-                let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
-                fadeOutAnimation.fromValue = 1.0
-                fadeOutAnimation.toValue = 0.0
-                fadeOutAnimation.duration = 0.5
-                fadeOutAnimation.beginTime = titleDisplayDuration.seconds - 0.5
-                fadeOutAnimation.fillMode = .forwards
-                fadeOutAnimation.isRemovedOnCompletion = false
-                
-                // Appliquer les animations
-                backgroundLayer.add(fadeInAnimation, forKey: "fadeIn")
-                backgroundLayer.add(fadeOutAnimation, forKey: "fadeOut")
-                titleLayer.add(fadeInAnimation, forKey: "fadeIn")
-                titleLayer.add(fadeOutAnimation, forKey: "fadeOut")
-                
-                // Créer un calque vidéo pour la composition
-                let videoLayer = CALayer()
-                videoLayer.frame = CGRect(
-                    x: 0,
-                    y: 0,
-                    width: sourceVideoTrack.naturalSize.width,
-                    height: sourceVideoTrack.naturalSize.height
-                )
-                
-                // Créer un calque racine pour contenir tous les autres calques
-                let outputLayer = CALayer()
-                outputLayer.frame = CGRect(
-                    x: 0,
-                    y: 0,
-                    width: sourceVideoTrack.naturalSize.width,
-                    height: sourceVideoTrack.naturalSize.height
-                )
-                
-                // Ajouter les calques dans l'ordre (vidéo puis titre)
-                outputLayer.addSublayer(videoLayer)
-                outputLayer.addSublayer(parentLayer)
-                
-                // Configurer l'animation du calque
-                videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
-                    postProcessingAsVideoLayer: videoLayer,
-                    in: outputLayer
-                )
             }
             
             // Créer une session d'export
@@ -2946,24 +2933,8 @@ struct ContentView: View {
 
     // Fonction pour capturer le titre en PNG
     private func captureOverlayToPNG() {
-        // Créer une vue temporaire avec le titre superposé
-        let containerWidth: CGFloat = 500 // Largeur standard pour la capture
-        let captureView = titleOverlayView(containerWidth: containerWidth)
-            .frame(width: containerWidth)
-            .padding(20)
-            .background(Color.clear) // Fond transparent au lieu de noir
-        
-        // Capturer la vue en image
-        let renderer = ImageRenderer(content: captureView)
-        
-        // Configurer le renderer pour la meilleure qualité
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        
-        // Activer la transparence
-        renderer.isOpaque = false
-        
-        // Générer l'image
-        if let nsImage = renderer.nsImage {
+        // Générer l'image du titre
+        if let nsImage = generateTitleOverlayImage() {
             // Créer un panel de sauvegarde
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [UTType.png]
@@ -3033,6 +3004,28 @@ struct ContentView: View {
         }
         .transition(.opacity)
         .animation(.easeInOut(duration: 0.5), value: showCaptureSuccessNotification)
+    }
+
+    // Fonction pour générer l'image PNG du titre sans l'enregistrer
+    private func generateTitleOverlayImage() -> NSImage? {
+        // Créer une vue temporaire avec le titre superposé
+        let containerWidth: CGFloat = 500 // Même largeur que l'ancienne version
+        let captureView = titleOverlayView(containerWidth: containerWidth)
+            .frame(width: containerWidth)
+            .padding(20)
+            .background(Color.clear) // Fond transparent
+        
+        // Capturer la vue en image
+        let renderer = ImageRenderer(content: captureView)
+        
+        // Configurer le renderer pour la meilleure qualité
+        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0 // Même échelle que l'ancienne version
+        
+        // Activer la transparence
+        renderer.isOpaque = false
+        
+        // Retourner l'image générée
+        return renderer.nsImage
     }
 }
 

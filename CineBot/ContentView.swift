@@ -849,8 +849,9 @@ struct ContentView: View {
         VStack(spacing: 10) {
             HStack(spacing: 20) {
                 openFileButton
+                newVideoButton
                 playPauseButton
-                stopButton
+                stopButton                
                 Spacer()
                 transcriptionButton
             }
@@ -1043,13 +1044,13 @@ struct ContentView: View {
                 Image(systemName: "text.bubble.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.green)
+                    .foregroundColor(.purple)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Transcrire")
                 .font(.caption)
-                .foregroundColor(.green)
+                .foregroundColor(.purple)
         }
     }
 
@@ -3441,6 +3442,68 @@ struct ContentView: View {
         
         // Retourner l'image générée
         return renderer.nsImage
+    }
+
+    private var newVideoButton: some View {
+        VStack {
+            Button(action: {
+                cancelVideo()
+            }) {
+                Image(systemName: "plus.square.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.green)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Text("Nouveau")
+                .font(.caption)
+                .foregroundColor(.green)
+        }
+    }
+
+    // Fonction pour annuler la vidéo en cours et réafficher la dropzone
+    private func cancelVideo() {
+        // Arrêter la lecture et nettoyer les ressources
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        
+        // Réinitialiser les variables d'état liées à la vidéo
+        asset = nil
+        videoURL = nil
+        videoDuration = 0
+        currentTime = 0
+        isPlaying = false
+        
+        // Réinitialiser les données de transcription
+        transcriptionText = ""
+        transcriptionSegments = []
+        formattedTranscription = ""
+        originalSegments = []
+        isTranscribing = false
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        
+        // Réinitialiser les variables de titre et description
+        videoTitle = ""
+        videoDescription = ""
+        videoHashtags = ""
+        showTitleOverlay = false
+        
+        // Réinitialiser l'audio
+        stopAudio()
+        audioURL = nil
+        showAudioFileName = false
+        
+        // Réinitialiser les effets
+        selectedEffect = "SANS"
+        isZoomedIn = false
+        
+        // Réinitialiser les variables de lecture
+        isPlayingSelectedSegments = false
+        currentSegmentIndex = 0
+        playbackTimer?.invalidate()
+        playbackTimer = nil
     }
 }
 

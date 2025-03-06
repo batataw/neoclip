@@ -43,6 +43,207 @@ struct ChatGPTResponse: Codable {
     let choices: [Choice]
 }
 
+// Structure pour la zone de dépôt (dropzone)
+struct VideoDropZone: View {
+    var onVideoDropped: (URL) -> Void
+    @State private var isHighlighted = false
+    @State private var isProcessing = false
+    @State private var errorMessage: String? = nil
+    
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isHighlighted ? Color.blue.opacity(0.2) : Color.gray.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [7]))
+                        .foregroundColor(isHighlighted ? .blue : .gray)
+                )
+            
+            VStack(spacing: 16) {
+                if isProcessing {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .padding(.bottom, 10)
+                    
+                    Text("Traitement du fichier...")
+                        .font(.headline)
+                        .foregroundColor(.gray)
+                } else {
+                    Image(systemName: "arrow.down.doc.fill")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(isHighlighted ? .blue : .gray)
+                    
+                    Text("Glissez et déposez votre vidéo ici")
+                        .font(.headline)
+                        .foregroundColor(isHighlighted ? .blue : .gray)
+                    
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    Text("ou")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    
+                    Button("Sélectionner un fichier") {
+                        if let fileURL = openFileDialog() {
+                            processVideoFile(fileURL)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isProcessing)
+                }
+            }
+            .padding()
+        }
+        .frame(height: 250)
+        .padding()
+        .onDrop(of: [UTType.movie.identifier, UTType.mpeg4Movie.identifier, UTType.quickTimeMovie.identifier], isTargeted: $isHighlighted) { itemProviders, _ in
+            guard let itemProvider = itemProviders.first, !isProcessing else { return false }
+            
+            isProcessing = true
+            errorMessage = nil
+            
+            // Utiliser une méthode plus sûre pour obtenir l'URL du fichier
+            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
+                if let url = url, error == nil {
+                    processVideoFile(url)
+                    return
+                }
+                
+                // Essayer avec d'autres types si le premier échoue
+                itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.mpeg4Movie.identifier) { url, error in
+                    if let url = url, error == nil {
+                        processVideoFile(url)
+                        return
+                    }
+                    
+                    itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.quickTimeMovie.identifier) { url, error in
+                        if let url = url, error == nil {
+                            processVideoFile(url)
+                            return
+                        }
+                        
+                        // Si toutes les tentatives échouent
+                        DispatchQueue.main.async {
+                            isProcessing = false
+                            errorMessage = "Impossible de charger le fichier vidéo"
+                        }
+                    }
+                }
+            }
+            
+            return true
+        }
+    }
+    
+    // Fonction pour traiter le fichier vidéo
+    private func processVideoFile(_ url: URL) {
+        // Vérifier d'abord si le fichier existe
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            DispatchQueue.main.async {
+                isProcessing = false
+                errorMessage = "Le fichier n'existe pas ou n'est plus accessible"
+            }
+            return
+        }
+        
+        // Créer immédiatement une copie du fichier avant qu'il ne soit supprimé
+        let localURL: URL
+        do {
+            localURL = try createLocalCopy(of: url)
+        } catch {
+            print("Erreur lors de la copie initiale: \(error)")
+            DispatchQueue.main.async {
+                isProcessing = false
+                errorMessage = "Impossible d'accéder au fichier"
+            }
+            return
+        }
+        
+        // Vérifier que le fichier est bien une vidéo
+        let asset = AVAsset(url: localURL)
+        
+        // Vérifier si l'asset est valide et contient des pistes vidéo
+        asset.loadValuesAsynchronously(forKeys: ["tracks"]) {
+            var error: NSError? = nil
+            let tracksStatus = asset.statusOfValue(forKey: "tracks", error: &error)
+            
+            DispatchQueue.main.async {
+                if tracksStatus == .loaded {
+                    let tracks = asset.tracks(withMediaType: .video)
+                    if !tracks.isEmpty {
+                        // Le fichier est une vidéo valide
+                        onVideoDropped(localURL)
+                        isProcessing = false
+                    } else {
+                        // Le fichier ne contient pas de piste vidéo
+                        errorMessage = "Le fichier ne contient pas de vidéo"
+                        isProcessing = false
+                        // Supprimer la copie locale si ce n'est pas une vidéo valide
+                        try? FileManager.default.removeItem(at: localURL)
+                    }
+                } else {
+                    // Erreur lors du chargement des métadonnées
+                    errorMessage = "Format vidéo non pris en charge"
+                    isProcessing = false
+                    // Supprimer la copie locale si ce n'est pas une vidéo valide
+                    try? FileManager.default.removeItem(at: localURL)
+                }
+            }
+        }
+    }
+    
+    // Fonction pour obtenir une URL locale pour le fichier
+    private func getLocalFileURL(for url: URL) -> URL {
+        // Si l'URL est déjà locale et accessible, la retourner directement
+        if url.isFileURL && FileManager.default.isReadableFile(atPath: url.path) {
+            return url
+        }
+        
+        // Sinon, créer une copie temporaire avec un nom unique
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+        let uniqueID = UUID().uuidString
+        let fileName = uniqueID + "-" + url.lastPathComponent
+        let localURL = tempDirectoryURL.appendingPathComponent(fileName)
+        
+        // Copier le fichier si nécessaire
+        do {
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                try FileManager.default.removeItem(at: localURL)
+            }
+            try FileManager.default.copyItem(at: url, to: localURL)
+            return localURL
+        } catch {
+            print("Erreur lors de la copie du fichier: \(error)")
+            return url // Retourner l'URL originale en cas d'échec
+        }
+    }
+
+    // Fonction pour créer une copie locale du fichier immédiatement
+    private func createLocalCopy(of url: URL) throws -> URL {
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+        let uniqueID = UUID().uuidString
+        let fileName = uniqueID + "-" + url.lastPathComponent
+        let localURL = tempDirectoryURL.appendingPathComponent(fileName)
+        
+        // Lire le contenu du fichier source
+        let data = try Data(contentsOf: url)
+        
+        // Écrire le contenu dans le fichier de destination
+        try data.write(to: localURL)
+        
+        return localURL
+    }
+}
+
 struct ContentView: View {
     @State private var player = AVPlayer()
     @State private var asset: AVAsset?
@@ -533,31 +734,37 @@ struct ContentView: View {
     private var videoPlayer: some View {
         GeometryReader { geometry in
             ZStack(alignment: .center) {
-                // Conteneur pour la vidéo avec ratio 9/16
-                VideoPlayer(player: player)
-                    .aspectRatio(9 / 16, contentMode: .fit)
-                    .cornerRadius(10)
-                    .shadow(radius: 5)
-                    .overlay(
-                        // Superposition du titre si activée et selon la durée choisie
-                        Group {
-                            if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
-                                GeometryReader { overlayGeometry in
-                                    // Calculer la taille réelle de la vidéo (en respectant le ratio 9/16)
-                                    let videoHeight = overlayGeometry.size.width * (16/9)
-                                    
-                                    titleOverlayView(containerWidth: overlayGeometry.size.width)
-                                        .frame(width: overlayGeometry.size.width)
-                                        .position(
-                                            x: overlayGeometry.size.width / 2,
-                                            y: videoHeight * 0.20 // Positionner à 20% du haut
-                                        )
+                if videoURL != nil {
+                    // Conteneur pour la vidéo avec ratio 9/16
+                    VideoPlayer(player: player)
+                        .aspectRatio(9 / 16, contentMode: .fit)
+                        .cornerRadius(10)
+                        .shadow(radius: 5)
+                        .overlay(
+                            // Superposition du titre si activée et selon la durée choisie
+                            Group {
+                                if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
+                                    GeometryReader { overlayGeometry in
+                                        // Calculer la taille réelle de la vidéo (en respectant le ratio 9/16)
+                                        let videoHeight = overlayGeometry.size.width * (16/9)
+                                        
+                                        titleOverlayView(containerWidth: overlayGeometry.size.width)
+                                            .frame(width: overlayGeometry.size.width)
+                                            .position(
+                                                x: overlayGeometry.size.width / 2,
+                                                y: videoHeight * 0.20 // Positionner à 20% du haut
+                                            )
+                                    }
                                 }
-                                .aspectRatio(9/16, contentMode: .fit)
-                                .allowsHitTesting(false) // Pour que les interactions passent à travers
                             }
-                        }
-                    )
+                        )
+                } else {
+                    // Afficher la dropzone lorsqu'aucune vidéo n'est chargée
+                    VideoDropZone { url in
+                        loadVideo(url: url)
+                    }
+                    .frame(maxWidth: geometry.size.width * 0.9)
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }

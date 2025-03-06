@@ -293,6 +293,10 @@ struct ContentView: View {
     @State private var selectedIllustrationIndex: Int? = nil // Index du segment pour lequel afficher l'illustration
     @State private var showIllustrationView: Bool = false // Pour afficher la vue d'illustration
     @State private var currentIllustratingIndex: Int? = nil
+    @State private var showSegmentImage: Bool = false // Pour afficher l'image du segment en cours
+    @State private var currentSegmentImageStartTime: Double = 0 // Temps de début d'affichage de l'image
+    @State private var currentSegmentImageEndTime: Double = 0 // Temps de fin d'affichage de l'image
+    @State private var currentSegmentImage: NSImage? = nil // Image du segment en cours
 
     // Enum pour gérer les différents types d'alertes
     enum AlertType: Identifiable {
@@ -779,8 +783,8 @@ struct ContentView: View {
                         .cornerRadius(10)
                         .shadow(radius: 5)
                         .overlay(
-                            // Superposition du titre si activée et selon la durée choisie
                             Group {
+                                // Superposition du titre si activée et selon la durée choisie
                                 if showTitleOverlay && !videoTitle.isEmpty && shouldShowTitleOverlay {
                                     GeometryReader { overlayGeometry in
                                         // Calculer la taille réelle de la vidéo (en respectant le ratio 9/16)
@@ -791,6 +795,28 @@ struct ContentView: View {
                                             .position(
                                                 x: overlayGeometry.size.width / 2,
                                                 y: videoHeight * 0.20 // Positionner à 20% du haut
+                                            )
+                                    }
+                                }
+                                
+                                // Superposition de l'image du segment si disponible
+                                if showSegmentImage, let image = currentSegmentImage {
+                                    GeometryReader { overlayGeometry in
+                                        // Calculer la taille réelle de la vidéo (en respectant le ratio 9/16)
+                                        let videoHeight = overlayGeometry.size.width * (16/9)
+                                        
+                                        // Fond noir semi-transparent sur tout l'écran
+                                        Rectangle()
+                                            .fill(Color.black.opacity(0.7))
+                                            .frame(width: overlayGeometry.size.width, height: videoHeight)
+                                        
+                                        Image(nsImage: image)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: overlayGeometry.size.width, height: videoHeight)
+                                            .position(
+                                                x: overlayGeometry.size.width / 2,
+                                                y: videoHeight / 2 // Centrer l'image
                                             )
                                     }
                                 }
@@ -1592,6 +1618,9 @@ struct ContentView: View {
 
         // Mettre à jour le temps actuel
         currentTime = segment.startTime
+        
+        // Masquer l'image du segment lors de la navigation manuelle
+        showSegmentImage = false
     }
 
     // Ajoutez cette fonction à votre ContentView
@@ -2035,9 +2064,29 @@ struct ContentView: View {
             if self.currentSegmentIndex < activeSegments.count {
                 let currentSegment = activeSegments[self.currentSegmentIndex]
                 let currentPlayerTime = CMTimeGetSeconds(self.player.currentTime())
+                
+                // Gérer l'affichage de l'image du segment
+                if let image = currentSegment.illustrationImage {
+                    // Vérifier si nous sommes dans la période d'affichage de l'image
+                    if currentPlayerTime >= self.currentSegmentImageStartTime && 
+                       currentPlayerTime < self.currentSegmentImageEndTime {
+                        // Afficher l'image si elle n'est pas déjà affichée
+                        if !self.showSegmentImage || self.currentSegmentImage != image {
+                            self.currentSegmentImage = image
+                            self.showSegmentImage = true
+                        }
+                    } else if currentPlayerTime >= self.currentSegmentImageEndTime || 
+                              currentPlayerTime < self.currentSegmentImageStartTime {
+                        // Masquer l'image si nous sommes en dehors de la période d'affichage
+                        self.showSegmentImage = false
+                    }
+                }
 
                 // Si nous avons atteint la fin du segment actuel
                 if currentPlayerTime >= currentSegment.endTime {
+                    // Masquer l'image à la fin du segment
+                    self.showSegmentImage = false
+                    
                     // Passer au segment suivant
                     self.currentSegmentIndex += 1
 
@@ -2065,6 +2114,31 @@ struct ContentView: View {
 
         // Vérifier la durée du segment
         let segmentDuration = segment.endTime - segment.startTime
+        
+        // Calculer les temps d'affichage de l'image si le segment a une image
+        if let _ = segment.illustrationImage {
+            // Réinitialiser l'affichage de l'image
+            showSegmentImage = false
+            
+            // Calculer les temps d'affichage selon les règles spécifiées
+            if segmentDuration > 6.0 {
+                // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
+                let middleTime = segment.startTime + (segmentDuration / 2)
+                currentSegmentImageStartTime = middleTime - 1.5
+                currentSegmentImageEndTime = currentSegmentImageStartTime + 3.0
+            } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
+                currentSegmentImageStartTime = segment.endTime - 3.0
+                currentSegmentImageEndTime = segment.endTime
+            } else {
+                // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
+                currentSegmentImageStartTime = segment.startTime
+                currentSegmentImageEndTime = segment.endTime
+            }
+        } else {
+            // Pas d'image pour ce segment
+            showSegmentImage = false
+        }
 
         if selectedEffect == "ZOOM" {
             applyZoomEffect(segment: segment)
@@ -2126,6 +2200,9 @@ struct ContentView: View {
         // Mettre en pause le lecteur
         player.pause()
         isPlaying = false
+        
+        // Masquer l'image du segment
+        showSegmentImage = false
 
         // Mettre en pause l'audio automatiquement
         if let player = audioPlayer, player.isPlaying {
@@ -3550,6 +3627,12 @@ struct ContentView: View {
         // Réinitialiser les effets
         selectedEffect = "SANS"
         isZoomedIn = false
+        
+        // Réinitialiser les variables d'affichage d'image
+        showSegmentImage = false
+        currentSegmentImage = nil
+        currentSegmentImageStartTime = 0
+        currentSegmentImageEndTime = 0
         
         // Réinitialiser les variables de lecture
         isPlayingSelectedSegments = false

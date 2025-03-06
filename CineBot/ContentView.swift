@@ -17,6 +17,7 @@ struct TranscriptionSegment: Identifiable {
     var indexFusion: Int = 0
     var isActive: Bool = true
     var durationAdjustment: Double = 0.0  // Pour suivre l'ajustement de durée
+    var illustrationImage: NSImage? = nil // Pour stocker l'illustration générée
 }
 
 // Structure pour la requête ChatGPT
@@ -289,11 +290,15 @@ struct ContentView: View {
     @State private var alertType: AlertType? = nil // Type d'alerte à afficher
     @State private var showExportSuccessNotification: Bool = false // Pour afficher une notification de succès
     @State private var showCaptureSuccessNotification = false
+    @State private var selectedIllustrationIndex: Int? = nil // Index du segment pour lequel afficher l'illustration
+    @State private var showIllustrationView: Bool = false // Pour afficher la vue d'illustration
+    @State private var currentIllustratingIndex: Int? = nil
 
     // Enum pour gérer les différents types d'alertes
     enum AlertType: Identifiable {
         case noVideo
         case exportCompleted(message: String)
+        case custom(title: String, message: String)
         
         var id: Int {
             switch self {
@@ -301,32 +306,105 @@ struct ContentView: View {
                 return 0
             case .exportCompleted:
                 return 1
+            case .custom:
+                return 2
+            }
+        }
+        
+        var alert: Alert {
+            switch self {
+            case .noVideo:
+                return Alert(
+                    title: Text("Aucune vidéo"),
+                    message: Text("Veuillez d'abord sélectionner une vidéo."),
+                    dismissButton: .default(Text("OK")))
+            case .exportCompleted(let message):
+                return Alert(
+                    title: Text("Export terminé"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK")))
+            case .custom(let title, let message):
+                return Alert(
+                    title: Text(title),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK")))
             }
         }
     }
 
     var body: some View {
-        mainContentView
-            .onDisappear {
-                cleanupResources()
-            }
-            .onAppear {
-                addPeriodicTimeObserver()
-            }
-            .alert(item: $alertType) { type in
-                switch type {
-                case .noVideo:
-                    return Alert(
-                        title: Text("Aucune vidéo chargée"),
-                        message: Text("Veuillez charger une vidéo avant de commencer la transcription."),
-                        dismissButton: .default(Text("OK")))
-                case .exportCompleted(let message):
-                    return Alert(
-                        title: Text("Export Vidéo"),
-                        message: Text(message),
-                        dismissButton: .default(Text("OK")))
+        ZStack {
+            mainContentView
+                .onDisappear {
+                    cleanupResources()
                 }
+                .onAppear {
+                    addPeriodicTimeObserver()
+                }
+            
+            // Afficher la notification de succès d'export si nécessaire
+            if showExportSuccessNotification {
+                exportSuccessNotificationView
             }
+            
+            // Afficher la notification de capture réussie si nécessaire
+            if showCaptureSuccessNotification {
+                captureSuccessNotificationView
+            }
+            
+            // Afficher la vue d'illustration si nécessaire
+            if showIllustrationView {
+                illustrationView
+            }
+            
+            // HUD global pour la génération d'image DALL-E
+            if chatGPTService.isGeneratingImage {
+                dalleGenerationHUD
+            }
+        }
+        .alert(item: $alertType) { alertType in
+            alertType.alert
+        }
+    }
+    
+    // HUD pour la génération d'image DALL-E
+    private var dalleGenerationHUD: some View {
+        ZStack {
+            // Fond semi-transparent sur toute l'application
+            Color.black.opacity(0.7)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 20) {
+                // Indicateur de chargement plus grand
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(2.0)
+                
+                Text("Génération d'illustration en cours...")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                if let index = currentIllustratingIndex, index < transcriptionSegments.count {
+                    Text("Pour le segment: \"\(transcriptionSegments[index].text)\"")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 400)
+                        .padding(.horizontal)
+                }
+                
+                Text("Cela peut prendre quelques secondes")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.top, 5)
+            }
+            .padding(30)
+            .background(Color.black.opacity(0.5))
+            .cornerRadius(20)
+            .shadow(radius: 15)
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.3), value: chatGPTService.isGeneratingImage)
     }
 
     // Break up the body into smaller components
@@ -1271,6 +1349,9 @@ struct ContentView: View {
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, 4)
             }
+            
+            // Bouton d'illustration avec DALL-E
+            illustrationButton(for: index)
 
             // Bouton d'activation/désactivation existant
             Button(action: {
@@ -1402,7 +1483,6 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundColor(.green)
         }
-        .padding(.horizontal, 10)
     }
 
     private var playPauseSegmentsButton: some View {
@@ -3476,6 +3556,225 @@ struct ContentView: View {
         currentSegmentIndex = 0
         playbackTimer?.invalidate()
         playbackTimer = nil
+    }
+
+    // Fonction pour générer une illustration avec DALL-E
+    private func generateIllustration(for index: Int) async {
+        guard index < transcriptionSegments.count else { return }
+        
+        // Mettre à jour l'index en cours d'illustration
+        DispatchQueue.main.async {
+            self.currentIllustratingIndex = index
+        }
+        
+        do {
+            // Créer un prompt pour DALL-E en utilisant le texte du segment
+            let segmentText = transcriptionSegments[index].text
+            
+            // Créer un contexte en utilisant les segments précédents et suivants pour plus de cohérence
+            var contextText = ""
+            
+            // Ajouter jusqu'à 2 segments précédents pour le contexte
+            if index > 0 {
+                let startIndex = max(0, index - 2)
+                contextText += transcriptionSegments[startIndex..<index].map { $0.text }.joined(separator: " ")
+                contextText += "\n\n"
+            }
+            
+            // Ajouter jusqu'à 2 segments suivants pour le contexte
+            if index < transcriptionSegments.count - 1 {
+                contextText += "\n\n"
+                let endIndex = min(transcriptionSegments.count - 1, index + 2)
+                contextText += transcriptionSegments[(index + 1)...endIndex].map { $0.text }.joined(separator: " ")
+            }
+            
+            let prompt = """
+            Crée une illustration au format portrait (9:16) pour cette phrase: "\(segmentText)"
+            
+            Contexte de la vidéo:
+            \(contextText)
+            
+            L'image doit être de haute qualité, artistique et représenter visuellement le contenu de la phrase. 
+            Utilise un style cohérent et moderne. L'image doit être au format portrait (9:16).
+            """
+            
+            // Appeler DALL-E
+            if let image = try await chatGPTService.generateImage(for: prompt) {
+                // Mettre à jour le segment avec l'image générée
+                DispatchQueue.main.async {
+                    var updatedSegment = self.transcriptionSegments[index]
+                    updatedSegment.illustrationImage = image
+                    self.transcriptionSegments[index] = updatedSegment
+                    
+                    // Réinitialiser l'index en cours d'illustration
+                    self.currentIllustratingIndex = nil
+                    
+                    // Afficher l'image générée
+                    self.selectedIllustrationIndex = index
+                    self.showIllustrationView = true
+                }
+            }
+        } catch {
+            // En cas d'erreur, afficher un message
+            print("Erreur lors de la génération de l'illustration: \(error.localizedDescription)")
+            
+            // Réinitialiser l'index en cours d'illustration
+            DispatchQueue.main.async {
+                self.currentIllustratingIndex = nil
+                
+                // Afficher une alerte d'erreur
+                self.alertType = .custom(title: "Erreur", message: "Impossible de générer l'illustration: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // Vue pour afficher l'illustration générée
+    private var illustrationView: some View {
+        Group {
+            if let index = selectedIllustrationIndex,
+               index < transcriptionSegments.count,
+               let image = transcriptionSegments[index].illustrationImage {
+                ZStack {
+                    // Fond semi-transparent
+                    Color.black.opacity(0.8)
+                        .edgesIgnoringSafeArea(.all)
+                        .onTapGesture {
+                            // Fermer la vue en cliquant en dehors de l'image
+                            showIllustrationView = false
+                        }
+                    
+                    VStack {
+                        // Titre
+                        Text("Illustration pour le segment #\(index + 1)")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                        
+                        // Image
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 600)
+                            .cornerRadius(12)
+                            .shadow(radius: 10)                              
+                        
+                        HStack(spacing: 20) {
+                            // Bouton pour supprimer l'image
+                            Button(action: {
+                                var updatedSegment = transcriptionSegments[index]
+                                updatedSegment.illustrationImage = nil
+                                transcriptionSegments[index] = updatedSegment
+                                showIllustrationView = false
+                            }) {
+                                Text("Supprimer")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.red)
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Bouton pour regénérer l'image
+                            Button(action: {
+                                showIllustrationView = false
+                                Task {
+                                    await generateIllustration(for: index)
+                                }
+                            }) {
+                                Text("Regénérer")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.orange)
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Bouton OK pour fermer
+                            Button(action: {
+                                showIllustrationView = false
+                            }) {
+                                Text("OK")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.bottom)
+                    }
+                    .padding()
+                }
+            }
+        }
+    }
+    
+    // Nouveau bouton d'illustration avec DALL-E
+    private func illustrationButton(for index: Int) -> some View {
+        Button(action: {
+            if transcriptionSegments[index].illustrationImage != nil {
+                // Si une image existe, l'afficher
+                selectedIllustrationIndex = index
+                showIllustrationView = true
+            } else {
+                // Sinon, générer une nouvelle image
+                Task {
+                    await generateIllustration(for: index)
+                }
+            }
+        }) {
+            // Changer l'icône si une image existe déjà
+            Image(systemName: transcriptionSegments[index].illustrationImage != nil ? "photo.fill" : "photo")
+                .foregroundColor(transcriptionSegments[index].illustrationImage != nil ? .green : .white)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(chatGPTService.isGeneratingImage)
+        .padding(.horizontal, 4)
+    }
+
+    // Vue pour la notification de succès d'export
+    private var exportSuccessNotificationView: some View {
+        VStack {
+            Spacer()
+            
+            HStack {
+                Spacer()
+                
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .resizable()
+                        .frame(width: 40, height: 40)
+                        .foregroundColor(.green)
+                    
+                    Text("Export réussi !")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+                .padding(20)
+                .background(Color.black.opacity(0.8))
+                .cornerRadius(15)
+                .shadow(radius: 10)
+                .padding(.trailing, 30)
+                .padding(.bottom, 30)
+                .onAppear {
+                    // Masquer la notification après 3 secondes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation {
+                            showExportSuccessNotification = false
+                        }
+                    }
+                }
+                
+                Spacer()
+            }
+            
+            Spacer()
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
     }
 }
 

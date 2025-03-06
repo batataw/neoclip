@@ -557,7 +557,7 @@ struct ContentView: View {
                                 .frame(width: 50, height: 50)
                                 .foregroundColor(
                                     transcriptionText.isEmpty || isGeneratingContent
-                                        ? .gray : .orange)
+                                        ? .gray : .purple)
                         }
                         .buttonStyle(PlainButtonStyle())
                         .disabled(transcriptionText.isEmpty || isGeneratingContent)
@@ -565,7 +565,7 @@ struct ContentView: View {
                         // Indicateur de chargement
                         if isGeneratingContent {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                .progressViewStyle(CircularProgressViewStyle(tint: .purple))
                                 .scaleEffect(1.5)
                         }
                     }
@@ -573,7 +573,7 @@ struct ContentView: View {
                     Text("Remplir")
                         .font(.caption)
                         .foregroundColor(
-                            transcriptionText.isEmpty || isGeneratingContent ? .gray : .orange)
+                            transcriptionText.isEmpty || isGeneratingContent ? .gray : .purple)
                 }
 
                 // Bouton Copier avec notification - désactivé si pas de contenu
@@ -585,7 +585,7 @@ struct ContentView: View {
                             Image(systemName: "doc.on.doc.fill")
                                 .resizable()
                                 .frame(width: 50, height: 50)
-                                .foregroundColor(hasContentToCopy ? .green : .gray)
+                                .foregroundColor(hasContentToCopy ? .purple : .gray)
                         }
                         .buttonStyle(PlainButtonStyle())
                         .disabled(!hasContentToCopy)
@@ -596,7 +596,7 @@ struct ContentView: View {
                                 .font(.caption)
                                 .padding(6)
                                 .background(Color.white.opacity(0.9))
-                                .foregroundColor(.green)
+                                .foregroundColor(.purple)
                                 .cornerRadius(8)
                                 .transition(.scale.combined(with: .opacity))
                                 .offset(y: -30)
@@ -605,12 +605,18 @@ struct ContentView: View {
 
                     Text("Copier")
                         .font(.caption)
-                        .foregroundColor(hasContentToCopy ? .green : .gray)
+                        .foregroundColor(hasContentToCopy ? .purple : .gray)
                 }
             }
             .padding()
-            .background(Color.purple.opacity(0.2))
-            .cornerRadius(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(NSColor.windowBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                    )
+            )
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
@@ -638,52 +644,6 @@ struct ContentView: View {
                     }
                 }
                 
-                // Notification de succès d'export
-                if showExportSuccessNotification {
-                    VStack {
-                        Spacer()
-                        
-                        HStack {
-                            Spacer()
-                            
-                            VStack(spacing: 10) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .resizable()
-                                    .frame(width: 40, height: 40)
-                                    .foregroundColor(.green)
-                                
-                                Text("Export réussi !")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(20)
-                            .background(Color.black.opacity(0.8))
-                            .cornerRadius(15)
-                            .shadow(radius: 10)
-                            .padding(.trailing, 30)
-                            .padding(.bottom, 30)
-                            .onAppear {
-                                // Masquer la notification après 3 secondes
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                    withAnimation {
-                                        showExportSuccessNotification = false
-                                    }
-                                }
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        Spacer()
-                    }
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
-                }
-                
-                // Notification de succès de capture
-                if showCaptureSuccessNotification {
-                    captureSuccessNotificationView
-                }
             }
         )
     }
@@ -856,8 +816,14 @@ struct ContentView: View {
                 transcriptionButton
             }
             .padding()
-            .background(Color.blue.opacity(0.2))
-            .cornerRadius(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(NSColor.windowBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                    )
+            )
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
@@ -879,8 +845,14 @@ struct ContentView: View {
                 exportVideoButton
             }
             .padding()
-            .background(Color.green.opacity(0.2))  // Fond vert pour correspondre au thème de la section Montage
-            .cornerRadius(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(NSColor.windowBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                    )
+            )
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
@@ -973,13 +945,13 @@ struct ContentView: View {
                 Image(systemName: "folder.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.yellow)
+                    .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Ouvrir")
                 .font(.caption)
-                .foregroundColor(.yellow)
+                .foregroundColor(.blue)
         }
     }
 
@@ -1022,13 +994,13 @@ struct ContentView: View {
                 Image(systemName: "stop.circle.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.red)
+                    .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Stop")
                 .font(.caption)
-                .foregroundColor(.red)
+                .foregroundColor(.blue)
         }
     }
 
@@ -1044,13 +1016,13 @@ struct ContentView: View {
                 Image(systemName: "text.bubble.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.purple)
+                    .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Transcrire")
                 .font(.caption)
-                .foregroundColor(.purple)
+                .foregroundColor(.blue)
         }
     }
 
@@ -1329,7 +1301,7 @@ struct ContentView: View {
                 VStack(spacing: 8) {
                     HStack(spacing: 5) {
                         Text(audioURL.lastPathComponent)
-                            .foregroundColor(.orange)
+                            .foregroundColor(.green)
                             .lineLimit(1)
                             .font(.system(size: 14))
 
@@ -1339,30 +1311,30 @@ struct ContentView: View {
                             showAudioFileName = false
                         }) {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.red)
+                                .foregroundColor(.green)
                                 .frame(width: 20, height: 20)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding(8)
-                    .background(Color.orange.opacity(0.1))
+                    .background(Color.green.opacity(0.1))
                     .cornerRadius(8)
 
                     // Contrôle du volume uniquement
                     HStack {
                         Image(systemName: "speaker.wave.1.fill")
-                            .foregroundColor(.orange)
+                            .foregroundColor(.green)
 
                         Slider(value: $audioVolume, in: 0...1) { editing in
                             if !editing {
                                 audioPlayer?.volume = audioVolume
                             }
                         }
-                        .accentColor(.orange)
+                        .accentColor(.green)
                         .frame(width: 100)
 
                         Image(systemName: "speaker.wave.3.fill")
-                            .foregroundColor(.orange)
+                            .foregroundColor(.green)
                     }
                     .padding(.horizontal)
                 }
@@ -1380,13 +1352,13 @@ struct ContentView: View {
                 Image(systemName: "arrow.counterclockwise.circle.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.red)
+                    .foregroundColor(.green)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Réinitialiser")
                 .font(.caption)
-                .foregroundColor(.red)
+                .foregroundColor(.green)
         }
         .padding(.horizontal, 10)
     }
@@ -1400,16 +1372,16 @@ struct ContentView: View {
                     prepareAudioPlayer(url: url)
                 }
             }) {
-                Image(systemName: audioURL == nil ? "music.note.list" : "music.note.list.fill")
+                Image(systemName: "music.note.list")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.green)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Audio")
                 .font(.caption)
-                .foregroundColor(.orange)
+                .foregroundColor(.green)
         }
         .padding(.horizontal, 10)
     }
@@ -1422,13 +1394,13 @@ struct ContentView: View {
                 Image(systemName: "backward.end.circle.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.green)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Redémarrer")
                 .font(.caption)
-                .foregroundColor(.blue)
+                .foregroundColor(.green)
         }
         .padding(.horizontal, 10)
     }
@@ -1463,14 +1435,14 @@ struct ContentView: View {
                 Image(systemName: "square.and.arrow.up.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.purple)
+                    .foregroundColor(.green)
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(isExportingVideo || transcriptionSegments.filter { $0.isActive }.isEmpty)
 
             Text("Exporter")
                 .font(.caption)
-                .foregroundColor(isExportingVideo || transcriptionSegments.filter { $0.isActive }.isEmpty ? .gray : .purple)
+                .foregroundColor(isExportingVideo || transcriptionSegments.filter { $0.isActive }.isEmpty ? .gray : .green)
         }
         .padding(.horizontal, 10)
     }
@@ -3447,23 +3419,23 @@ struct ContentView: View {
     private var newVideoButton: some View {
         VStack {
             Button(action: {
-                cancelVideo()
+                resetVideo()
             }) {
-                Image(systemName: "plus.square.fill")
+                Image(systemName: "plus.circle.fill")
                     .resizable()
                     .frame(width: 50, height: 50)
-                    .foregroundColor(.green)
+                    .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
 
             Text("Nouveau")
                 .font(.caption)
-                .foregroundColor(.green)
+                .foregroundColor(.blue)
         }
     }
 
     // Fonction pour annuler la vidéo en cours et réafficher la dropzone
-    private func cancelVideo() {
+    private func resetVideo() {
         // Arrêter la lecture et nettoyer les ressources
         player.pause()
         player.replaceCurrentItem(with: nil)

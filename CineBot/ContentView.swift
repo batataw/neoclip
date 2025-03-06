@@ -270,7 +270,7 @@ struct ContentView: View {
     @State private var showAudioFileName: Bool = false
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isAudioPlaying: Bool = false
-    @State private var audioVolume: Float = 0.5  // Volume par défaut à 50%
+    @State private var audioVolume: Float = 0.1  // Volume par défaut à 10%
     @State private var currentScaleFactor: CGFloat = 1.0  // Pour suivre le facteur d'échelle actuel
     @State private var randomGenerator = SystemRandomNumberGenerator()
     @State private var videoTitle: String = ""  // Variable d'état pour le titre
@@ -1146,31 +1146,77 @@ struct ContentView: View {
     }
 
     private var segmentsListView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(transcriptionSegments.indices, id: \.self) { index in
-                    segmentView(for: index)
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(transcriptionSegments.indices, id: \.self) { index in
+                        segmentView(for: index)
+                            .id("segment_\(index)")  // Ajouter un ID unique pour chaque segment
+                    }
+                }
+                .padding()
+                .onChange(of: currentSegmentIndex) { newIndex in
+                    // Lorsque l'index du segment en cours change et que nous sommes en lecture
+                    if isPlayingSelectedSegments {
+                        // Trouver l'index réel dans la liste complète des segments
+                        let activeSegments = transcriptionSegments.filter { $0.isActive }
+                        if newIndex < activeSegments.count {
+                            let currentSegment = activeSegments[newIndex]
+                            // Trouver l'index de ce segment dans la liste complète
+                            if let actualIndex = transcriptionSegments.firstIndex(where: { $0.id == currentSegment.id }) {
+                                // Faire défiler vers ce segment avec animation
+                                withAnimation {
+                                    scrollProxy.scrollTo("segment_\(actualIndex)", anchor: .center)
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            .padding()
         }
     }
 
     private func segmentView(for index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Déterminer si ce segment est le segment en cours de lecture
+        let isCurrentlyPlaying = isPlayingSelectedSegments && isCurrentPlayingSegment(index)
+        
+        return VStack(alignment: .leading, spacing: 4) {
             segmentHeader(for: index)
             segmentText(for: index)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            transcriptionSegments[index].isActive
-                ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1)
+            Group {
+                if isCurrentlyPlaying {
+                    // Segment en cours de lecture - surbrillance verte
+                    Color.green.opacity(0.2)
+                } else if transcriptionSegments[index].isActive {
+                    // Segment actif mais pas en cours de lecture
+                    Color.blue.opacity(0.1)
+                } else {
+                    // Segment inactif
+                    Color.gray.opacity(0.1)
+                }
+            }
         )
         .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isCurrentlyPlaying ? Color.green : Color.clear, lineWidth: 2)
+        )
         .onTapGesture(count: 2) {
             navigateToSegment(transcriptionSegments[index])
         }
+    }
+
+    // Ajouter cette fonction pour déterminer si un segment est en cours de lecture
+    private func isCurrentPlayingSegment(_ index: Int) -> Bool {
+        let activeSegments = transcriptionSegments.filter { $0.isActive }
+        guard currentSegmentIndex < activeSegments.count else { return false }
+        
+        let currentSegment = activeSegments[currentSegmentIndex]
+        return transcriptionSegments[index].id == currentSegment.id
     }
 
     private func segmentHeader(for index: Int) -> some View {
@@ -1931,7 +1977,6 @@ struct ContentView: View {
 
         // Configurer un timer pour gérer le passage d'un segment à l'autre
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-
             // Vérifier si nous sommes toujours dans le segment actuel
             let activeSegments = self.transcriptionSegments.filter { $0.isActive }
             if self.currentSegmentIndex < activeSegments.count {

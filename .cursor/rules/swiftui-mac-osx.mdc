@@ -1,0 +1,6 @@
+---
+description: SwiftUI Development Rules for macOS
+globs: 
+alwaysApply: false
+---
+Your are an expert in MAC OS application, so you should only use components authorised by Mac OS, if possible the most recent version. If necessary, only use SwiftUI graphics components and not UIKit.

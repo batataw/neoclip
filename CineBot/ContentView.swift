@@ -343,6 +343,12 @@ struct ContentView: View {
     // Add a state variable to track elapsed time during export
     @State private var exportElapsedTime: Double = 0.0
 
+    // Add a property to hold the current export session
+    @State private var currentExportSession: AVAssetExportSession? = nil
+    
+    // Property to store segment boundary time observer
+    @State private var segmentBoundaryObserver: Any? = nil
+
     var body: some View {
         ZStack {
             mainContentView
@@ -916,9 +922,6 @@ struct ContentView: View {
         exportProgress = 0.0
     }
 
-    // Add a property to hold the current export session
-    @State private var currentExportSession: AVAssetExportSession? = nil
-
     // Video control buttons
     private var videoControlButtons: some View {
         VStack(spacing: 10) {
@@ -1082,6 +1085,12 @@ struct ContentView: View {
                 player.pause()
                 player.seek(to: .zero)
                 isPlaying = false
+                
+                // Clean up segment boundary observer if exists
+                if let observer = segmentBoundaryObserver {
+                    player.removeTimeObserver(observer)
+                    segmentBoundaryObserver = nil
+                }
             }) {
                 Image(systemName: "stop.circle.fill")
                     .resizable()
@@ -1333,6 +1342,17 @@ struct ContentView: View {
 
     private func segmentControlButtons(for index: Int) -> some View {
         HStack(spacing: 2) {
+            // Play segment button
+            Button(action: {
+                playSegmentOnly(transcriptionSegments[index])
+            }) {
+                Image(systemName: "play.circle.fill")
+                    .foregroundColor(.purple)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 2)
+            .help("Lire ce segment uniquement")
+            
             // Boutons d'ajustement de durée
             Button(action: {
                 adjustSegmentDuration(index: index, adjustment: -0.5)
@@ -1388,6 +1408,43 @@ struct ContentView: View {
             .foregroundColor(transcriptionSegments[index].isActive ? .primary : .gray)
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // Function to play only the segment without effects or images
+    private func playSegmentOnly(_ segment: TranscriptionSegment) {
+        // Go to the beginning of the segment
+        let time = CMTime(seconds: segment.startTime, preferredTimescale: 600)
+        player.seek(to: time)
+        
+        // Reset any current video composition (removing effects)
+        player.currentItem?.videoComposition = nil
+        
+        // Don't show segment image
+        showSegmentImage = false
+        
+        // Set up a one-time observer to stop at segment end
+        let segmentEndTime = segment.endTime
+        let timeObserver = player.addBoundaryTimeObserver(forTimes: [NSValue(time: CMTime(seconds: segmentEndTime, preferredTimescale: 600))], queue: .main) {
+            // When we reach the end time, pause the player
+            self.player.pause()
+            self.isPlaying = false
+            
+            // Remove this observer
+            if let observer = self.segmentBoundaryObserver {
+                self.player.removeTimeObserver(observer)
+                self.segmentBoundaryObserver = nil
+            }
+        }
+        
+        // Store the observer so we can remove it later if needed
+        segmentBoundaryObserver = timeObserver
+        
+        // Start playback
+        player.play()
+        isPlaying = true
+        
+        // Update UI
+        currentTime = segment.startTime
     }
 
     private var audioFileSection: some View {
@@ -1609,6 +1666,12 @@ struct ContentView: View {
         
         // Masquer l'image du segment lors de la navigation manuelle
         showSegmentImage = false
+        
+        // Clean up segment boundary observer if exists
+        if let observer = segmentBoundaryObserver {
+            player.removeTimeObserver(observer)
+            segmentBoundaryObserver = nil
+        }
     }
 
     // Ajoutez cette fonction à votre ContentView
@@ -2191,6 +2254,12 @@ struct ContentView: View {
         
         // Masquer l'image du segment
         showSegmentImage = false
+        
+        // Clean up segment boundary observer if exists
+        if let observer = segmentBoundaryObserver {
+            player.removeTimeObserver(observer)
+            segmentBoundaryObserver = nil
+        }
 
         // Mettre en pause l'audio automatiquement
         if let player = audioPlayer, player.isPlaying {

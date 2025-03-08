@@ -876,7 +876,6 @@ struct ContentView: View {
             .animation(.easeInOut(duration: 0.5), value: shouldShowTitleOverlay)
     }
 
-    // Video progress bar
     private var videoProgressBar: some View {
         HStack {
             // Display elapsed time
@@ -895,7 +894,10 @@ struct ContentView: View {
                 }
             )
             .padding()
-        }
+
+            // Add the new video button at the end of the slider
+            newVideoButton
+        }.padding(.horizontal, 40)
     }
 
     // Function to cancel the export
@@ -921,8 +923,7 @@ struct ContentView: View {
     private var videoControlButtons: some View {
         VStack(spacing: 10) {
             HStack(spacing: 20) {
-                openFileButton
-                newVideoButton
+                openFileButton                
                 playPauseButton
                 stopButton                
                 Spacer()
@@ -3674,6 +3675,7 @@ struct ContentView: View {
         return renderer.nsImage
     }
 
+    // Add the new video button to a different location
     private var newVideoButton: some View {
         VStack {
             Button(action: {
@@ -3681,7 +3683,7 @@ struct ContentView: View {
             }) {
                 Image(systemName: "plus.circle.fill")
                     .resizable()
-                    .frame(width: 50, height: 50)
+                    .frame(width: 30, height: 30)
                     .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
@@ -3690,6 +3692,7 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundColor(.blue)
         }
+        .padding(.horizontal, 10)
     }
 
     // Fonction pour annuler la vidéo en cours et réafficher la dropzone

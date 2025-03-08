@@ -298,6 +298,10 @@ struct ContentView: View {
     @State private var currentSegmentImageEndTime: Double = 0 // Temps de fin d'affichage de l'image
     @State private var currentSegmentImage: NSImage? = nil // Image du segment en cours
 
+    // Add these properties to hold temporary URLs for video export
+    @State private var tempVideoURL: URL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video.mp4")
+    @State private var tempVideoWithImagesURL: URL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_with_images.mp4")
+
     // Enum pour gérer les différents types d'alertes
     enum AlertType: Identifiable {
         case noVideo
@@ -335,6 +339,9 @@ struct ContentView: View {
             }
         }
     }
+
+    // Add a state variable to track elapsed time during export
+    @State private var exportElapsedTime: Double = 0.0
 
     var body: some View {
         ZStack {
@@ -702,32 +709,7 @@ struct ContentView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
-        .padding(.horizontal, 20)
-        .overlay(
-            // HUD global pour l'ensemble de la section
-            Group {
-                if isGeneratingContent {
-                    ZStack {
-                        Color.black.opacity(0.4)
-                            .edgesIgnoringSafeArea(.all)
-
-                        VStack(spacing: 15) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(2.0)
-
-                            Text("Génération en cours...")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                        }
-                        .padding(25)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(15)
-                    }
-                }
-                
-            }
-        )
+        .padding(.horizontal, 20)  
     }
 
     // Propriété calculée pour vérifier s'il y a du contenu à copier
@@ -896,17 +878,44 @@ struct ContentView: View {
 
     // Video progress bar
     private var videoProgressBar: some View {
-        Slider(
-            value: $currentTime, in: 0...videoDuration,
-            onEditingChanged: { isEditing in
-                if !isEditing {
-                    let newTime = CMTime(seconds: currentTime, preferredTimescale: 600)
-                    player.seek(to: newTime)
+        HStack {
+            // Display elapsed time
+            Text(String(format: "%.1f s", currentTime))
+                .font(.caption)
+                .foregroundColor(.gray)
+                .padding(.leading, 10)
+
+            Slider(
+                value: $currentTime, in: 0...videoDuration,
+                onEditingChanged: { isEditing in
+                    if !isEditing {
+                        let newTime = CMTime(seconds: currentTime, preferredTimescale: 600)
+                        player.seek(to: newTime)
+                    }
                 }
-            }
-        )
-        .padding()
+            )
+            .padding()
+        }
     }
+
+    // Function to cancel the export
+    private func cancelExport() {
+        // Cancel the export session if it exists
+        if let exportSession = currentExportSession {
+            exportSession.cancelExport()
+            currentExportSession = nil
+        }
+
+        // Clear temporary files
+        cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL)
+
+        // Reset export state
+        isExportingVideo = false
+        exportProgress = 0.0
+    }
+
+    // Add a property to hold the current export session
+    @State private var currentExportSession: AVAssetExportSession? = nil
 
     // Video control buttons
     private var videoControlButtons: some View {
@@ -979,61 +988,39 @@ struct ContentView: View {
                                 .progressViewStyle(LinearProgressViewStyle(tint: .green))
                                 .frame(width: 200)
                             
+                            // Display percentage below the progress bar
                             Text("\(Int(exportProgress * 100))%")
                                 .font(.subheadline)
                                 .foregroundColor(.white)
+
+                            // Arrange elapsed time and cancel button on the same line
+                            HStack {
+                                // Display elapsed time in minutes and seconds
+                                Text(String(format: "%02d:%02d", Int(exportElapsedTime) / 60, Int(exportElapsedTime) % 60))
+                                    .font(.subheadline)
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                // Add cancel button within the export progress overlay
+                                Button(action: {
+                                    cancelExport()
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .resizable()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(.red)
+                                        .background(Color.white)
+                                        .clipShape(Circle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.top, 10)
                         }
                         .padding(25)
                         .background(Color.black.opacity(0.7))
                         .cornerRadius(15)
                     }
-                }
-                
-                // Notification de succès d'export
-                if showExportSuccessNotification {
-                    VStack {
-                        Spacer()
-                        
-                        HStack {
-                            Spacer()
-                            
-                            VStack(spacing: 10) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .resizable()
-                                    .frame(width: 40, height: 40)
-                                    .foregroundColor(.green)
-                                
-                                Text("Export réussi !")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                            }
-                            .padding(20)
-                            .background(Color.black.opacity(0.8))
-                            .cornerRadius(15)
-                            .shadow(radius: 10)
-                            .padding(.trailing, 30)
-                            .padding(.bottom, 30)
-                            .onAppear {
-                                // Masquer la notification après 3 secondes
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                    withAnimation {
-                                        showExportSuccessNotification = false
-                                    }
-                                }
-                            }
-                            
-                            Spacer()
-                        }
-                        
-                        Spacer()
-                    }
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.5), value: showExportSuccessNotification)
-                }
-                
-                // Notification de succès de capture
-                if showCaptureSuccessNotification {
-                    captureSuccessNotificationView
                 }
             }
         )
@@ -2696,7 +2683,6 @@ struct ContentView: View {
                     // Étape 2: Ajouter les images si nécessaire
                     if hasImages {
                         print("Ajout des images à la vidéo")
-                        self.exportProgress = 0.33 // 33% du processus total
                         
                         self.addPictureToVideo(
                             videoURL: secondStepInputURL,
@@ -2709,7 +2695,6 @@ struct ContentView: View {
                                 // Étape 3: Ajouter la musique si nécessaire
                                 if hasMusicTrack, let audioURL = self.audioURL {
                                     print("Ajout de la musique à la vidéo")
-                                    self.exportProgress = 0.66 // 66% du processus total
                                     
                                     self.addMusicToVideo(
                                         videoURL: finalStepInputURL,
@@ -2770,7 +2755,6 @@ struct ContentView: View {
                     } else if hasMusicTrack, let audioURL = self.audioURL {
                         // Pas d'images, mais ajout de musique nécessaire
                         print("Ajout de la musique à la vidéo")
-                        self.exportProgress = 0.5 // 50% du processus total
                         
                         self.addMusicToVideo(
                             videoURL: finalStepInputURL,
@@ -3066,6 +3050,8 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 // La progression de l'export va de 25% à 50% du processus total (première étape)
                 self.exportProgress = 0.25 + Float(exportSession.progress) * 0.25
+                // Update elapsed time
+                self.exportElapsedTime += 0.1
             }
         }
         
@@ -3097,6 +3083,9 @@ struct ContentView: View {
                 completion(false, NSError(domain: "CineBot", code: 4, userInfo: [NSLocalizedDescriptionKey: "Export terminé avec un statut inattendu: \(exportSession.status.rawValue)"]))
             }
         }
+
+        // Set the current export session
+        currentExportSession = exportSession
     }
     
     // Nouvelle fonction pour ajouter la musique à la vidéo déjà exportée
@@ -3262,6 +3251,9 @@ struct ContentView: View {
                     completion(false, NSError(domain: "CineBot", code: 9, userInfo: [NSLocalizedDescriptionKey: "Export final terminé avec un statut inattendu: \(exportSession.status.rawValue)"]))
                 }
             }
+
+            // Set the current export session
+            currentExportSession = exportSession
         } catch {
             completion(false, error)
         }
@@ -4216,6 +4208,9 @@ struct ContentView: View {
                 completion(false, NSError(domain: "CineBot", code: 4, userInfo: [NSLocalizedDescriptionKey: "Export terminé avec un statut inattendu: \(exportSession.status.rawValue)"]))
             }
         }
+
+        // Set the current export session
+        currentExportSession = exportSession
     }
 
     // Fonction utilitaire pour nettoyer les fichiers temporaires

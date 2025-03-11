@@ -1,8 +1,9 @@
 import Foundation
 import AVFoundation
+import Combine
 
 /// Service pour la transcription audio via l'API Whisper d'OpenAI
-class WhisperService {
+class WhisperService: ObservableObject {
     // MARK: - Types
     
     /// Erreurs possibles du service Whisper
@@ -57,7 +58,15 @@ class WhisperService {
     /// Réponse de l'API Whisper
     struct WhisperResponse: Decodable {
         let text: String
-        // Vous pouvez ajouter d'autres champs selon vos besoins et le format de réponse choisi
+        // Structure pour les segments avec horodatages
+        var segments: [Segment]?
+        
+        struct Segment: Decodable {
+            let id: Int
+            let start: Double
+            let end: Double
+            let text: String
+        }
     }
     
     // MARK: - Propriétés
@@ -151,8 +160,16 @@ class WhisperService {
                     } else {
                         completion(.failure(WhisperError.invalidResponse))
                     }
+                } else if options.responseFormat == "verbose_json" {
+                    // Pour le format verbose_json, on renvoie la réponse JSON brute
+                    // pour que le client puisse accéder aux segments
+                    if let jsonString = String(data: data, encoding: .utf8) {
+                        completion(.success(jsonString))
+                    } else {
+                        completion(.failure(WhisperError.invalidResponse))
+                    }
                 } else {
-                    // Sinon on décode le JSON
+                    // Pour les autres formats JSON, on décode simplement le texte
                     let response = try JSONDecoder().decode(WhisperResponse.self, from: data)
                     completion(.success(response.text))
                 }

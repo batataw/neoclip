@@ -18,6 +18,8 @@ struct TranscriptionSegment: Identifiable {
     var isActive: Bool = true
     var durationAdjustment: Double = 0.0  // Pour suivre l'ajustement de durée
     var illustrationImage: NSImage? = nil // Pour stocker l'illustration générée
+    var illustrationImageStartTime: Double? = nil // Pour stocker le temps de début d'affichage de l'image
+    var illustrationImageEndTime: Double? = nil // Pour stocker le temps de fin d'affichage de l'image
 }
 
 // Structure pour la requête ChatGPT
@@ -2171,20 +2173,50 @@ struct ContentView: View {
             // Réinitialiser l'affichage de l'image
             showSegmentImage = false
             
-            // Calculer les temps d'affichage selon les règles spécifiées
-            if segmentDuration > 6.0 {
-                // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
-                let middleTime = segment.startTime + (segmentDuration / 2)
-                currentSegmentImageStartTime = middleTime - 1.5
-                currentSegmentImageEndTime = currentSegmentImageStartTime + 3.0
-            } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
-                // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
-                currentSegmentImageStartTime = segment.endTime - 3.0
-                currentSegmentImageEndTime = segment.endTime
+            // Trouver l'index du segment dans le tableau
+            if let segmentIndex = transcriptionSegments.firstIndex(where: { $0.id == segment.id }) {
+                var updatedSegment = segment
+                
+                // Vérifier si les temps d'affichage ont déjà été calculés pour ce segment
+                if updatedSegment.illustrationImageStartTime == nil || updatedSegment.illustrationImageEndTime == nil {
+                    // Calculer les temps d'affichage selon les règles spécifiées
+                    if segmentDuration > 6.0 {
+                        // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
+                        let middleTime = segment.startTime + (segmentDuration / 2)
+                        updatedSegment.illustrationImageStartTime = middleTime - 1.5
+                        updatedSegment.illustrationImageEndTime = updatedSegment.illustrationImageStartTime! + 3.0
+                    } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                        // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
+                        updatedSegment.illustrationImageStartTime = segment.endTime - 3.0
+                        updatedSegment.illustrationImageEndTime = segment.endTime
+                    } else {
+                        // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
+                        updatedSegment.illustrationImageStartTime = segment.startTime
+                        updatedSegment.illustrationImageEndTime = segment.endTime
+                    }
+                    
+                    // Mettre à jour le segment dans le tableau
+                    transcriptionSegments[segmentIndex] = updatedSegment
+                }
+                
+                // Utiliser les temps stockés dans le segment
+                currentSegmentImageStartTime = updatedSegment.illustrationImageStartTime!
+                currentSegmentImageEndTime = updatedSegment.illustrationImageEndTime!
+                
+                print("Affichage image: \(currentSegmentImageStartTime) à \(currentSegmentImageEndTime)")
             } else {
-                // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
-                currentSegmentImageStartTime = segment.startTime
-                currentSegmentImageEndTime = segment.endTime
+                // Calculer les temps directement si nous ne trouvons pas le segment
+                if segmentDuration > 6.0 {
+                    let middleTime = segment.startTime + (segmentDuration / 2)
+                    currentSegmentImageStartTime = middleTime - 1.5
+                    currentSegmentImageEndTime = currentSegmentImageStartTime + 3.0
+                } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                    currentSegmentImageStartTime = segment.endTime - 3.0
+                    currentSegmentImageEndTime = segment.endTime
+                } else {
+                    currentSegmentImageStartTime = segment.startTime
+                    currentSegmentImageEndTime = segment.endTime
+                }
             }
         } else {
             // Pas d'image pour ce segment
@@ -4122,98 +4154,165 @@ struct ContentView: View {
         parentLayer.frame = CGRect(origin: .zero, size: videoTrack.naturalSize)
         parentLayer.addSublayer(videoLayer)
         
-        // Créer des layers pour chaque image de segment
+        // Traiter chaque segment avec image et vérifier la durée totale de la vidéo
+        let videoDurationInSeconds = videoAsset.duration.seconds
+        print("Durée totale de la vidéo: \(videoDurationInSeconds) secondes")
+        
+        // Identifier les segments qui dépassent la durée de la vidéo
+        var segmentsOutsideVideoDuration: [(segment: TranscriptionSegment, startTime: Double, endTime: Double, duration: Double)] = []
+        
+        // Premier passage : analyser tous les segments et identifier ceux qui dépassent
         for segment in segmentsWithImages {
-            guard let image = segment.illustrationImage else { continue }
+            guard let _ = segment.illustrationImage else { continue }
             
-            // Calculer les temps d'affichage selon les mêmes règles que pendant la lecture
-            let segmentDuration = segment.endTime - segment.startTime
-            var imageStartTime: Double = 0
-            var imageEndTime: Double = 0
+            // Utiliser les temps précalculés s'ils existent, sinon les calculer
+            var imageStartTime: Double
+            var imageEndTime: Double
             
-            if segmentDuration > 6.0 {
-                // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
-                let middleTime = segment.startTime + (segmentDuration / 2)
-                imageStartTime = middleTime - 1.5
-                imageEndTime = imageStartTime + 3.0
-            } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
-                // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
-                imageStartTime = segment.endTime - 3.0
-                imageEndTime = segment.endTime
+            if let startTime = segment.illustrationImageStartTime, let endTime = segment.illustrationImageEndTime {
+                // Utiliser les temps précalculés lors de la prévisualisation
+                imageStartTime = startTime
+                imageEndTime = endTime
+                print("Utilisation des temps précalculés pour segment \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
             } else {
-                // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
-                imageStartTime = segment.startTime
-                imageEndTime = segment.endTime
+                // Calculer les temps d'affichage selon les mêmes règles que pendant la lecture
+                let segmentDuration = segment.endTime - segment.startTime
+                
+                print("Calcul des temps pour segment de \(segment.startTime) à \(segment.endTime), durée: \(segmentDuration)")
+                
+                if segmentDuration > 6.0 {
+                    // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
+                    let middleTime = segment.startTime + (segmentDuration / 2)
+                    imageStartTime = middleTime - 1.5
+                    imageEndTime = imageStartTime + 3.0
+                    print("Segment > 6s: image de \(imageStartTime) à \(imageEndTime)")
+                } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                    // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
+                    imageStartTime = segment.endTime - 3.0
+                    imageEndTime = segment.endTime
+                    print("Segment 3-6s: image de \(imageStartTime) à \(imageEndTime)")
+                } else {
+                    // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
+                    imageStartTime = segment.startTime
+                    imageEndTime = segment.endTime
+                    print("Segment < 3s: image de \(imageStartTime) à \(imageEndTime)")
+                }
             }
             
             // S'assurer que les temps sont dans les limites de la vidéo
-            imageStartTime = max(0, imageStartTime)
-            imageEndTime = min(videoAsset.duration.seconds, imageEndTime)
+            if imageStartTime < 0 {
+                imageStartTime = 0
+            }
             
-            // Créer un layer pour l'image
-            let imageLayer = CALayer()
+            // Vérifier si l'image dépasse la fin de la vidéo
+            if imageEndTime > videoDurationInSeconds {
+                segmentsOutsideVideoDuration.append((
+                    segment: segment,
+                    startTime: imageStartTime,
+                    endTime: imageEndTime,
+                    duration: imageEndTime - imageStartTime
+                ))
+            }
+        }
+        
+        // Ajuster les temps pour répartir équitablement les images qui dépassent
+        var adjustedImageTimings: [(segment: TranscriptionSegment, startTime: Double, endTime: Double)] = []
+        
+        // Répartir équitablement les segments qui dépassent sur la fin de la vidéo
+        if !segmentsOutsideVideoDuration.isEmpty {
+            print("Répartition de \(segmentsOutsideVideoDuration.count) images dépassant la durée de la vidéo")
             
-            // Créer un fond noir semi-transparent
-            let backgroundLayer = CALayer()
-            backgroundLayer.frame = CGRect(origin: .zero, size: videoTrack.naturalSize)
-            backgroundLayer.backgroundColor = CGColor(gray: 0, alpha: 0.7)
+            // Déterminer l'espace disponible à la fin de la vidéo
+            // Utiliser les 20 dernières secondes, ou moins si la vidéo est plus courte
+            let finalSectionStartTime = max(0, videoDurationInSeconds - 20)
+            let availableTime = videoDurationInSeconds - finalSectionStartTime
             
-            // Convertir NSImage en CGImage
-            if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                // Configurer le layer d'image
-                imageLayer.contents = cgImage
+            // Diviser le temps disponible en sections égales pour chaque image
+            let sectionDuration = min(3.0, availableTime / Double(segmentsOutsideVideoDuration.count))
+            
+            // Distribuer les images sur les sections
+            for (index, segmentInfo) in segmentsOutsideVideoDuration.enumerated() {
+                let sectionStartTime = finalSectionStartTime + Double(index) * sectionDuration
+                let sectionEndTime = min(videoDurationInSeconds, sectionStartTime + sectionDuration)
                 
-                // Calculer les dimensions pour conserver le ratio d'aspect
-                let imageRatio = image.size.width / image.size.height
-                let videoRatio = videoTrack.naturalSize.width / videoTrack.naturalSize.height
+                print("Image hors durée #\(index+1): répartie de \(sectionStartTime) à \(sectionEndTime)")
                 
-                var imageFrame = CGRect(origin: .zero, size: videoTrack.naturalSize)
+                adjustedImageTimings.append((
+                    segment: segmentInfo.segment,
+                    startTime: sectionStartTime,
+                    endTime: sectionEndTime
+                ))
+            }
+        }
+        
+        // Deuxième passage : ajouter toutes les images aux moments appropriés
+        for segment in segmentsWithImages {
+            guard let image = segment.illustrationImage else { continue }
+            
+            // Vérifier si ce segment a été ajusté car il dépasse la durée
+            if let adjustedTiming = adjustedImageTimings.first(where: { $0.segment.id == segment.id }) {
+                // Utiliser les temps ajustés
+                let imageStartTime = adjustedTiming.startTime
+                let imageEndTime = adjustedTiming.endTime
                 
-                if imageRatio > videoRatio {
-                    // Image plus large que la vidéo
-                    let newHeight = videoTrack.naturalSize.width / imageRatio
-                    let yOffset = (videoTrack.naturalSize.height - newHeight) / 2
-                    imageFrame = CGRect(x: 0, y: yOffset, width: videoTrack.naturalSize.width, height: newHeight)
+                print("Utilisation de temps ajustés pour segment \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
+                
+                // Ajouter l'image avec les temps ajustés
+                addImageLayer(
+                    image: image,
+                    imageStartTime: imageStartTime,
+                    imageEndTime: imageEndTime,
+                    videoTrack: videoTrack,
+                    parentLayer: parentLayer
+                )
+            } else {
+                // Segment normal qui ne dépasse pas la durée de la vidéo
+                var imageStartTime: Double
+                var imageEndTime: Double
+                
+                if let startTime = segment.illustrationImageStartTime, let endTime = segment.illustrationImageEndTime {
+                    // Utiliser les temps précalculés lors de la prévisualisation
+                    imageStartTime = startTime
+                    imageEndTime = endTime
+                    print("Utilisation des temps précalculés pour segment normal \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
                 } else {
-                    // Image plus haute que la vidéo
-                    let newWidth = videoTrack.naturalSize.height * imageRatio
-                    let xOffset = (videoTrack.naturalSize.width - newWidth) / 2
-                    imageFrame = CGRect(x: xOffset, y: 0, width: newWidth, height: videoTrack.naturalSize.height)
+                    // Calculer les temps d'affichage
+                    let segmentDuration = segment.endTime - segment.startTime
+                    
+                    if segmentDuration > 6.0 {
+                        let middleTime = segment.startTime + (segmentDuration / 2)
+                        imageStartTime = middleTime - 1.5
+                        imageEndTime = imageStartTime + 3.0
+                    } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                        imageStartTime = segment.endTime - 3.0
+                        imageEndTime = segment.endTime
+                    } else {
+                        imageStartTime = segment.startTime
+                        imageEndTime = segment.endTime
+                    }
                 }
                 
-                imageLayer.frame = imageFrame
-                imageLayer.contentsGravity = .resizeAspect
+                // S'assurer que les temps sont dans les limites de la vidéo
+                if imageStartTime < 0 {
+                    imageStartTime = 0
+                }
                 
-                // Créer une animation pour l'apparition et la disparition de l'image
-                let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
-                fadeInAnimation.fromValue = 0.0
-                fadeInAnimation.toValue = 1.0
-                fadeInAnimation.duration = 0.5
-                fadeInAnimation.beginTime = imageStartTime
-                fadeInAnimation.fillMode = .forwards
-                fadeInAnimation.isRemovedOnCompletion = false
+                if imageEndTime > videoDurationInSeconds {
+                    // Cela ne devrait pas arriver car nous avons traité ces cas ci-dessus
+                    imageEndTime = videoDurationInSeconds
+                    imageStartTime = max(0, imageEndTime - min(3.0, segment.endTime - segment.startTime))
+                }
                 
-                let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
-                fadeOutAnimation.fromValue = 1.0
-                fadeOutAnimation.toValue = 0.0
-                fadeOutAnimation.duration = 0.5
-                fadeOutAnimation.beginTime = imageEndTime - 0.5
-                fadeOutAnimation.fillMode = .forwards
-                fadeOutAnimation.isRemovedOnCompletion = false
+                print("Temps pour segment normal \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
                 
-                // Ajouter les animations
-                imageLayer.add(fadeInAnimation, forKey: "fadeIn")
-                imageLayer.add(fadeOutAnimation, forKey: "fadeOut")
-                backgroundLayer.add(fadeInAnimation, forKey: "fadeIn")
-                backgroundLayer.add(fadeOutAnimation, forKey: "fadeOut")
-                
-                // Définir l'opacité initiale à 0
-                imageLayer.opacity = 0
-                backgroundLayer.opacity = 0
-                
-                // Ajouter les layers au parent
-                parentLayer.addSublayer(backgroundLayer)
-                parentLayer.addSublayer(imageLayer)
+                // Ajouter l'image avec les temps normaux
+                addImageLayer(
+                    image: image,
+                    imageStartTime: imageStartTime,
+                    imageEndTime: imageEndTime,
+                    videoTrack: videoTrack,
+                    parentLayer: parentLayer
+                )
             }
         }
         
@@ -4283,6 +4382,81 @@ struct ContentView: View {
 
         // Set the current export session
         currentExportSession = exportSession
+    }
+    
+    // Fonction utilitaire pour ajouter une couche d'image avec les effets d'animation
+    private func addImageLayer(
+        image: NSImage,
+        imageStartTime: Double,
+        imageEndTime: Double,
+        videoTrack: AVAssetTrack,
+        parentLayer: CALayer
+    ) {
+        // Créer un layer pour l'image
+        let imageLayer = CALayer()
+        
+        // Créer un fond noir semi-transparent
+        let backgroundLayer = CALayer()
+        backgroundLayer.frame = CGRect(origin: .zero, size: videoTrack.naturalSize)
+        backgroundLayer.backgroundColor = CGColor(gray: 0, alpha: 0.7)
+        
+        // Convertir NSImage en CGImage
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            // Configurer le layer d'image
+            imageLayer.contents = cgImage
+            
+            // Calculer les dimensions pour conserver le ratio d'aspect
+            let imageRatio = image.size.width / image.size.height
+            let videoRatio = videoTrack.naturalSize.width / videoTrack.naturalSize.height
+            
+            var imageFrame = CGRect(origin: .zero, size: videoTrack.naturalSize)
+            
+            if imageRatio > videoRatio {
+                // Image plus large que la vidéo
+                let newHeight = videoTrack.naturalSize.width / imageRatio
+                let yOffset = (videoTrack.naturalSize.height - newHeight) / 2
+                imageFrame = CGRect(x: 0, y: yOffset, width: videoTrack.naturalSize.width, height: newHeight)
+            } else {
+                // Image plus haute que la vidéo
+                let newWidth = videoTrack.naturalSize.height * imageRatio
+                let xOffset = (videoTrack.naturalSize.width - newWidth) / 2
+                imageFrame = CGRect(x: xOffset, y: 0, width: newWidth, height: videoTrack.naturalSize.height)
+            }
+            
+            imageLayer.frame = imageFrame
+            imageLayer.contentsGravity = .resizeAspect
+            
+            // Créer une animation pour l'apparition et la disparition de l'image
+            let fadeInAnimation = CABasicAnimation(keyPath: "opacity")
+            fadeInAnimation.fromValue = 0.0
+            fadeInAnimation.toValue = 1.0
+            fadeInAnimation.duration = 0.5
+            fadeInAnimation.beginTime = imageStartTime
+            fadeInAnimation.fillMode = .forwards
+            fadeInAnimation.isRemovedOnCompletion = false
+            
+            let fadeOutAnimation = CABasicAnimation(keyPath: "opacity")
+            fadeOutAnimation.fromValue = 1.0
+            fadeOutAnimation.toValue = 0.0
+            fadeOutAnimation.duration = 0.5
+            fadeOutAnimation.beginTime = imageEndTime - 0.5
+            fadeOutAnimation.fillMode = .forwards
+            fadeOutAnimation.isRemovedOnCompletion = false
+            
+            // Ajouter les animations
+            imageLayer.add(fadeInAnimation, forKey: "fadeIn")
+            imageLayer.add(fadeOutAnimation, forKey: "fadeOut")
+            backgroundLayer.add(fadeInAnimation, forKey: "fadeIn")
+            backgroundLayer.add(fadeOutAnimation, forKey: "fadeOut")
+            
+            // Définir l'opacité initiale à 0
+            imageLayer.opacity = 0
+            backgroundLayer.opacity = 0
+            
+            // Ajouter les layers au parent
+            parentLayer.addSublayer(backgroundLayer)
+            parentLayer.addSublayer(imageLayer)
+        }
     }
 
     // Fonction utilitaire pour nettoyer les fichiers temporaires

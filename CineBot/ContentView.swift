@@ -3443,7 +3443,7 @@ struct ContentView: View {
     }
     
     private func applyJumpCutEffectForExport(sourceVideoTrack: AVAssetTrack, activeSegments: [TranscriptionSegment], layerInstruction: AVMutableVideoCompositionLayerInstruction) {
-        // Pour Jump Cut, on alterne entre zoom et normal avec des transitions plus nettes
+        // Pour Jump Cut, on alterne entre plan normal et zoom x1.3 centré
         var currentTime: CMTime = .zero
         
         for (index, segment) in activeSegments.enumerated() {
@@ -3452,77 +3452,27 @@ struct ContentView: View {
                 preferredTimescale: 600
             )
             
-            // Définir la durée de la transition (0,2 secondes)
-            let transitionDuration = CMTime(seconds: 0.2, preferredTimescale: 600)
-            
-            // S'assurer que la transition ne dépasse pas la durée du segment
-            let actualTransitionDuration = CMTimeCompare(transitionDuration, CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.5)) > 0 
-                ? CMTimeMultiplyByFloat64(segmentDuration, multiplier: 0.5) 
-                : transitionDuration
-            
-            // Calculer le temps de fin de la transition d'entrée et le début de la transition de sortie
-            let transitionInEndTime = CMTimeAdd(currentTime, actualTransitionDuration)
-            let transitionOutStartTime = CMTimeSubtract(CMTimeAdd(currentTime, segmentDuration), actualTransitionDuration)
-            
-            // Nombre d'étapes pour chaque transition
-            let numberOfSteps = 10
-            
             if index % 2 == 0 {
-                // Segments pairs: zoom centré avec transition progressive
-                let maxZoomFactor: CGFloat = 1.5
+                // Segments pairs: zoom x1.3 centré
+                let zoomFactor: CGFloat = 1.3
                 
-                // Transition d'entrée (de normal à zoom)
-                let transitionInStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
-                for step in 0..<numberOfSteps {
-                    // Calculer le facteur de zoom pour cette étape (de 1.0 à maxZoomFactor)
-                    let zoomFactor = 1.0 + (Double(maxZoomFactor - 1.0) * Double(step) / Double(numberOfSteps - 1))
-                    
-                    // Créer la transformation avec le zoom
-                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
-                    
-                    // Calculer la translation pour centrer l'image
-                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
-                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
-                    
-                    // Combiner zoom et translation pour centrer
-                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
-                    
-                    // Appliquer la transformation à ce moment précis
-                    let stepTime = CMTimeAdd(currentTime, CMTimeMultiplyByFloat64(transitionInStepDuration, multiplier: Double(step)))
-                    layerInstruction.setTransform(combinedTransform, at: stepTime)
-                }
+                // Calculer la translation nécessaire pour centrer l'image avec ce facteur de zoom
+                // Formule: translation = -dimension * (zoomFactor-1)/(2*zoomFactor)
+                let translateX = -sourceVideoTrack.naturalSize.width * (zoomFactor - 1.0) / (2.0 * zoomFactor)
+                let translateY = -sourceVideoTrack.naturalSize.height * (zoomFactor - 1.0) / (2.0 * zoomFactor)
                 
-                // Maintenir le zoom maximum pendant la partie centrale du segment
-                let maxZoomTransform = CGAffineTransform(scaleX: maxZoomFactor, y: maxZoomFactor)
-                let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - Double(maxZoomFactor))) / 2.0
-                let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - Double(maxZoomFactor))) / 2.0
-                let maxZoomCombinedTransform = maxZoomTransform.translatedBy(x: translateX, y: translateY)
+                // Créer d'abord la transformation d'échelle
+                let scaleTransform = CGAffineTransform(scaleX: zoomFactor, y: zoomFactor)
                 
-                // Appliquer la transformation maximale à la fin de la transition d'entrée
-                layerInstruction.setTransform(maxZoomCombinedTransform, at: transitionInEndTime)
+                // Puis ajouter la translation pour centrer
+                let combinedTransform = scaleTransform.concatenating(
+                    CGAffineTransform(translationX: translateX, y: translateY)
+                )
                 
-                // Transition de sortie (de zoom à normal)
-                let transitionOutStepDuration = CMTimeMultiplyByFloat64(actualTransitionDuration, multiplier: 1.0 / Double(numberOfSteps))
-                for step in 0..<numberOfSteps {
-                    // Calculer le facteur de zoom pour cette étape (de maxZoomFactor à 1.0)
-                    let zoomFactor = Double(maxZoomFactor) - (Double(maxZoomFactor - 1.0) * Double(step) / Double(numberOfSteps - 1))
-                    
-                    // Créer la transformation avec le zoom
-                    let transform = CGAffineTransform(scaleX: CGFloat(zoomFactor), y: CGFloat(zoomFactor))
-                    
-                    // Calculer la translation pour centrer l'image
-                    let translateX = (sourceVideoTrack.naturalSize.width * (1.0 - zoomFactor)) / 2.0
-                    let translateY = (sourceVideoTrack.naturalSize.height * (1.0 - zoomFactor)) / 2.0
-                    
-                    // Combiner zoom et translation pour centrer
-                    let combinedTransform = transform.translatedBy(x: translateX, y: translateY)
-                    
-                    // Appliquer la transformation à ce moment précis
-                    let stepTime = CMTimeAdd(transitionOutStartTime, CMTimeMultiplyByFloat64(transitionOutStepDuration, multiplier: Double(step)))
-                    layerInstruction.setTransform(combinedTransform, at: stepTime)
-                }
+                // Appliquer la transformation
+                layerInstruction.setTransform(combinedTransform, at: currentTime)
             } else {
-                // Segments impairs: normal
+                // Segments impairs: plan normal (fullscreen)
                 let normalTransform = CGAffineTransform.identity
                 layerInstruction.setTransform(normalTransform, at: currentTime)
             }

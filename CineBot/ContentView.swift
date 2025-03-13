@@ -1376,14 +1376,20 @@ struct ContentView: View {
 
             // Bouton de fusion existant
             if index > 0 {
-                Button(action: {
-                    mergeWithPreviousSegment(index)
-                }) {
-                    Image(systemName: "arrow.merge")
-                        .foregroundColor(.orange)
+                // Calculer l'écart temporel entre le segment courant et le précédent
+                let timeGap = transcriptionSegments[index].startTime - transcriptionSegments[index - 1].endTime
+                
+                // N'afficher le bouton que si l'écart est inférieur ou égal à 2 secondes
+                if timeGap <= 2.0 {
+                    Button(action: {
+                        mergeWithPreviousSegment(index)
+                    }) {
+                        Image(systemName: "arrow.merge")
+                            .foregroundColor(.orange)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal, 4)
                 }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.horizontal, 4)
             }
             
             // Bouton d'illustration avec DALL-E

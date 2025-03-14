@@ -284,7 +284,7 @@ struct ContentView: View {
     @State private var isGeneratingContent: Bool = false
     @State private var showTitleOverlay: Bool = false
     @State private var titleBackgroundColor: Color = .blue
-    @State private var titleFontSize: Double = 36
+    @State private var titleFontSize: Double = 24
     @State private var titleBorderWidth: Double = 10
     @State private var titleDuration: String = "5s"  // Options: "5s", "10s", "Tout"
     @State private var titleFontName: String = "System" // Police par défaut
@@ -957,7 +957,7 @@ struct ContentView: View {
             audioFileSection
 
             HStack {
-                resetButton
+                autoEditingButton
                 Spacer()
                 audioButton
                 restartButton
@@ -2945,11 +2945,200 @@ struct ContentView: View {
             return
         }
         
+        // Générer un nom de fichier unique avec un timestamp pour les fichiers temporaires
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        
+        // Créer une URL temporaire pour le fichier de sortie final
+        let temporaryFinalOutputURL = FileManager.default.temporaryDirectory.appendingPathComponent("final_output_\(timestamp).mp4")
+        
+        // Vérifier si un fichier audio a été sélectionné
+        let hasMusicTrack = audioURL != nil
+        
+        // Vérifier si des segments ont des images
+        let hasImages = transcriptionSegments.filter { $0.isActive && $0.illustrationImage != nil }.count > 0
+        
+        // Créer des URLs temporaires pour les étapes intermédiaires si nécessaire
+        // URL pour la première étape (export vidéo de base)
+        let tempVideoURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(timestamp).mp4")
+        
+        // URL pour la deuxième étape (après ajout des images)
+        let tempVideoWithImagesURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_with_images_\(timestamp).mp4")
+        
+        // Déterminer l'URL de sortie pour chaque étape
+        let firstStepOutputURL: URL
+        let secondStepInputURL: URL
+        let secondStepOutputURL: URL
+        let finalStepInputURL: URL
+        
+        if hasMusicTrack && hasImages {
+            // Cas 1: Musique + Images -> Deux étapes intermédiaires
+            firstStepOutputURL = tempVideoURL
+            secondStepInputURL = tempVideoURL
+            secondStepOutputURL = tempVideoWithImagesURL
+            finalStepInputURL = tempVideoWithImagesURL
+        } else if hasMusicTrack {
+            // Cas 2: Musique seulement -> Une étape intermédiaire
+            firstStepOutputURL = tempVideoURL
+            secondStepInputURL = tempVideoURL
+            secondStepOutputURL = temporaryFinalOutputURL
+            finalStepInputURL = tempVideoURL
+        } else if hasImages {
+            // Cas 3: Images seulement -> Une étape intermédiaire
+            firstStepOutputURL = tempVideoURL
+            secondStepInputURL = tempVideoURL
+            secondStepOutputURL = temporaryFinalOutputURL
+            finalStepInputURL = tempVideoURL
+        } else {
+            // Cas 4: Ni musique ni images -> Export direct vers fichier temporaire
+            firstStepOutputURL = temporaryFinalOutputURL
+            secondStepInputURL = temporaryFinalOutputURL
+            secondStepOutputURL = temporaryFinalOutputURL
+            finalStepInputURL = temporaryFinalOutputURL
+        }
+        
+        // Commencer l'export
+        print("Début de l'export")
+        isExportingVideo = true
+        exportProgress = 0.0
+        
+        // Récupérer les pistes vidéo et audio de l'asset original
+        let videoTracks = asset.tracks(withMediaType: .video)
+        let audioTracks = asset.tracks(withMediaType: .audio)
+        
+        guard let sourceVideoTrack = videoTracks.first else {
+            DispatchQueue.main.async {
+                self.isExportingVideo = false
+                print("Échec de l'export vidéo: Aucune piste vidéo trouvée")
+                self.alertType = .exportCompleted(message: "Échec de l'export vidéo: Aucune piste vidéo trouvée")
+            }
+            return
+        }
+        
+        // Étape 1: Exporter la vidéo de base
+        exportVideoWithoutExternalMusic(
+            asset: asset,
+            activeSegments: activeSegments,
+            sourceVideoTrack: sourceVideoTrack,
+            sourceAudioTrack: audioTracks.first,
+            outputURL: firstStepOutputURL
+        ) { success, error in
+            if success {
+                print("Export vidéo de base réussi")
+                
+                // Étape 2: Ajouter les images si nécessaire
+                if hasImages {
+                    print("Ajout des images à la vidéo")
+                    
+                    self.addPictureToVideo(
+                        videoURL: secondStepInputURL,
+                        activeSegments: activeSegments,
+                        outputURL: secondStepOutputURL
+                    ) { success, error in
+                        if success {
+                            print("Ajout des images réussi")
+                            
+                            // Étape 3: Ajouter la musique si nécessaire
+                            if hasMusicTrack, let audioURL = self.audioURL {
+                                print("Ajout de la musique à la vidéo")
+                                
+                                self.addMusicToVideo(
+                                    videoURL: finalStepInputURL,
+                                    audioURL: audioURL,
+                                    outputURL: temporaryFinalOutputURL
+                                ) { success, error in
+                                    if success {
+                                        print("Export complet avec musique réussi")
+                                        DispatchQueue.main.async {
+                                            // Demander où enregistrer le fichier final
+                                            self.saveExportedVideo(from: temporaryFinalOutputURL)
+                                        }
+                                    } else {
+                                        // Nettoyage des fichiers temporaires
+                                        self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL, temporaryFinalOutputURL)
+                                        
+                                        print("Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
+                                        DispatchQueue.main.async {
+                                            self.isExportingVideo = false
+                                            self.alertType = .exportCompleted(message: "Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Export terminé avec succès (avec images, sans musique)
+                                print("Export avec images réussi")
+                                DispatchQueue.main.async {
+                                    // Demander où enregistrer le fichier final
+                                    self.saveExportedVideo(from: temporaryFinalOutputURL)
+                                }
+                            }
+                        } else {
+                            // Nettoyage des fichiers temporaires
+                            self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL, temporaryFinalOutputURL)
+                            
+                            print("Échec de l'ajout des images: \(error?.localizedDescription ?? "Erreur inconnue")")
+                            DispatchQueue.main.async {
+                                self.isExportingVideo = false
+                                self.alertType = .exportCompleted(message: "Échec de l'ajout des images: \(error?.localizedDescription ?? "Erreur inconnue")")
+                            }
+                        }
+                    }
+                } else if hasMusicTrack, let audioURL = self.audioURL {
+                    // Pas d'images, mais ajout de musique nécessaire
+                    print("Ajout de la musique à la vidéo")
+                    
+                    self.addMusicToVideo(
+                        videoURL: finalStepInputURL,
+                        audioURL: audioURL,
+                        outputURL: temporaryFinalOutputURL
+                    ) { success, error in
+                        if success {
+                            print("Export avec musique réussi")
+                            DispatchQueue.main.async {
+                                // Demander où enregistrer le fichier final
+                                self.saveExportedVideo(from: temporaryFinalOutputURL)
+                            }
+                        } else {
+                            // Nettoyage des fichiers temporaires
+                            self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL, temporaryFinalOutputURL)
+                            
+                            print("Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
+                            DispatchQueue.main.async {
+                                self.isExportingVideo = false
+                                self.alertType = .exportCompleted(message: "Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
+                            }
+                        }
+                    }
+                } else {
+                    // Export direct terminé avec succès (ni images, ni musique)
+                    print("Export direct réussi")
+                    DispatchQueue.main.async {
+                        // Demander où enregistrer le fichier final
+                        self.saveExportedVideo(from: temporaryFinalOutputURL)
+                    }
+                }
+            } else {
+                // Nettoyage des fichiers temporaires
+                self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL, temporaryFinalOutputURL)
+                
+                // Échec de l'export vidéo de base
+                print("Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
+                DispatchQueue.main.async {
+                    self.isExportingVideo = false
+                    self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
+                }
+            }
+        }
+    }
+    
+    // Fonction pour demander où enregistrer la vidéo et finaliser l'export
+    private func saveExportedVideo(from temporaryURL: URL) {
         // Ouvrir un dialogue pour choisir où enregistrer la vidéo exportée
         print("Ouverture du dialogue de sauvegarde")
         let savePanel = NSSavePanel()
-        savePanel.title = "Exporter la vidéo"
-        savePanel.prompt = "Exporter"
+        savePanel.title = "Enregistrer la vidéo"
+        savePanel.prompt = "Enregistrer"
         savePanel.message = "Choisissez où enregistrer votre vidéo"
         
         // Spécifier le type de fichier MP4
@@ -2970,214 +3159,49 @@ struct ContentView: View {
         if response == .OK, let finalOutputURL = savePanel.url {
             print("URL de sortie sélectionnée: \(finalOutputURL.path)")
             
-            // Vérifier si un fichier audio a été sélectionné
-            let hasMusicTrack = audioURL != nil
-            
-            // Vérifier si des segments ont des images
-            let hasImages = transcriptionSegments.filter { $0.isActive && $0.illustrationImage != nil }.count > 0
-            
-            // Créer des URLs temporaires pour les étapes intermédiaires si nécessaire
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-            let timestamp = dateFormatter.string(from: Date())
-            
-            // URL pour la première étape (export vidéo de base)
-            let tempVideoURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_\(timestamp).mp4")
-            
-            // URL pour la deuxième étape (après ajout des images)
-            let tempVideoWithImagesURL = FileManager.default.temporaryDirectory.appendingPathComponent("temp_video_with_images_\(timestamp).mp4")
-            
-            // Déterminer l'URL de sortie pour chaque étape
-            let firstStepOutputURL: URL
-            let secondStepInputURL: URL
-            let secondStepOutputURL: URL
-            let finalStepInputURL: URL
-            
-            if hasMusicTrack && hasImages {
-                // Cas 1: Musique + Images -> Deux étapes intermédiaires
-                firstStepOutputURL = tempVideoURL
-                secondStepInputURL = tempVideoURL
-                secondStepOutputURL = tempVideoWithImagesURL
-                finalStepInputURL = tempVideoWithImagesURL
-            } else if hasMusicTrack {
-                // Cas 2: Musique seulement -> Une étape intermédiaire
-                firstStepOutputURL = tempVideoURL
-                secondStepInputURL = tempVideoURL
-                secondStepOutputURL = finalOutputURL
-                finalStepInputURL = tempVideoURL
-            } else if hasImages {
-                // Cas 3: Images seulement -> Une étape intermédiaire
-                firstStepOutputURL = tempVideoURL
-                secondStepInputURL = tempVideoURL
-                secondStepOutputURL = finalOutputURL
-                finalStepInputURL = tempVideoURL
-            } else {
-                // Cas 4: Ni musique ni images -> Export direct
-                firstStepOutputURL = finalOutputURL
-                secondStepInputURL = finalOutputURL
-                secondStepOutputURL = finalOutputURL
-                finalStepInputURL = finalOutputURL
-            }
-            
-            // Commencer l'export
-            print("Début de l'export")
-            isExportingVideo = true
-            exportProgress = 0.0
-            
-            // Récupérer les pistes vidéo et audio de l'asset original
-            let videoTracks = asset.tracks(withMediaType: .video)
-            let audioTracks = asset.tracks(withMediaType: .audio)
-            
-            guard let sourceVideoTrack = videoTracks.first else {
-                DispatchQueue.main.async {
-                    self.isExportingVideo = false
-                    print("Échec de l'export vidéo: Aucune piste vidéo trouvée")
-                    self.alertType = .exportCompleted(message: "Échec de l'export vidéo: Aucune piste vidéo trouvée")
+            do {
+                // Si un fichier existe déjà à cet emplacement, le supprimer
+                if FileManager.default.fileExists(atPath: finalOutputURL.path) {
+                    try FileManager.default.removeItem(at: finalOutputURL)
                 }
-                return
+                
+                // Copier le fichier temporaire vers l'emplacement final
+                try FileManager.default.copyItem(at: temporaryURL, to: finalOutputURL)
+                
+                // Supprimer le fichier temporaire
+                try FileManager.default.removeItem(at: temporaryURL)
+                
+                // Notification de succès
+                self.isExportingVideo = false
+                self.exportProgress = 1.0
+                self.showExportSuccessNotification = true
+                
+                // Masquer la notification après 3 secondes
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self.showExportSuccessNotification = false
+                }
+            } catch {
+                print("Erreur lors de la copie du fichier: \(error.localizedDescription)")
+                self.isExportingVideo = false
+                self.alertType = .exportCompleted(message: "Échec de l'enregistrement de la vidéo: \(error.localizedDescription)")
+            }
+        } else {
+            // L'utilisateur a annulé, nettoyer le fichier temporaire
+            do {
+                try FileManager.default.removeItem(at: temporaryURL)
+            } catch {
+                print("Erreur lors de la suppression du fichier temporaire: \(error.localizedDescription)")
             }
             
-            // Étape 1: Exporter la vidéo de base
-            exportVideoWithoutExternalMusic(
-                asset: asset,
-                activeSegments: activeSegments,
-                sourceVideoTrack: sourceVideoTrack,
-                sourceAudioTrack: audioTracks.first,
-                outputURL: firstStepOutputURL
-            ) { success, error in
-                if success {
-                    print("Export vidéo de base réussi")
-                    
-                    // Étape 2: Ajouter les images si nécessaire
-                    if hasImages {
-                        print("Ajout des images à la vidéo")
-                        
-                        self.addPictureToVideo(
-                            videoURL: secondStepInputURL,
-                            activeSegments: activeSegments,
-                            outputURL: secondStepOutputURL
-                        ) { success, error in
-                            if success {
-                                print("Ajout des images réussi")
-                                
-                                // Étape 3: Ajouter la musique si nécessaire
-                                if hasMusicTrack, let audioURL = self.audioURL {
-                                    print("Ajout de la musique à la vidéo")
-                                    
-                                    self.addMusicToVideo(
-                                        videoURL: finalStepInputURL,
-                                        audioURL: audioURL,
-                                        outputURL: finalOutputURL
-                                    ) { success, error in
-                                        // Nettoyage des fichiers temporaires
-                                        self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL)
-                                        
-                                        if success {
-                                            print("Export complet avec musique réussi")
-                                            DispatchQueue.main.async {
-                                                self.isExportingVideo = false
-                                                self.exportProgress = 1.0
-                                                self.showExportSuccessNotification = true
-                                                
-                                                // Masquer la notification après 3 secondes
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                                    self.showExportSuccessNotification = false
-                                                }
-                                            }
-                                        } else {
-                                            print("Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                            DispatchQueue.main.async {
-                                                self.isExportingVideo = false
-                                                self.alertType = .exportCompleted(message: "Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // Nettoyage des fichiers temporaires
-                                    self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL)
-                                    
-                                    // Export terminé avec succès (avec images, sans musique)
-                                    print("Export avec images réussi")
-                                    DispatchQueue.main.async {
-                                        self.isExportingVideo = false
-                                        self.exportProgress = 1.0
-                                        self.showExportSuccessNotification = true
-                                        
-                                        // Masquer la notification après 3 secondes
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                            self.showExportSuccessNotification = false
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Nettoyage des fichiers temporaires
-                                self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL)
-                                
-                                print("Échec de l'ajout des images: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                DispatchQueue.main.async {
-                                    self.isExportingVideo = false
-                                    self.alertType = .exportCompleted(message: "Échec de l'ajout des images: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                }
-                            }
-                        }
-                    } else if hasMusicTrack, let audioURL = self.audioURL {
-                        // Pas d'images, mais ajout de musique nécessaire
-                        print("Ajout de la musique à la vidéo")
-                        
-                        self.addMusicToVideo(
-                            videoURL: finalStepInputURL,
-                            audioURL: audioURL,
-                            outputURL: finalOutputURL
-                        ) { success, error in
-                            // Nettoyage des fichiers temporaires
-                            self.cleanupTemporaryFiles(tempVideoURL, tempVideoWithImagesURL)
-                            
-                            if success {
-                                print("Export avec musique réussi")
-                                DispatchQueue.main.async {
-                                    self.isExportingVideo = false
-                                    self.exportProgress = 1.0
-                                    self.showExportSuccessNotification = true
-                                    
-                                    // Masquer la notification après 3 secondes
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                        self.showExportSuccessNotification = false
-                                    }
-                                }
-                            } else {
-                                print("Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                DispatchQueue.main.async {
-                                    self.isExportingVideo = false
-                                    self.alertType = .exportCompleted(message: "Échec de l'ajout de la musique: \(error?.localizedDescription ?? "Erreur inconnue")")
-                                }
-                            }
-                        }
-                    } else {
-                        // Export direct terminé avec succès (ni images, ni musique)
-                        print("Export direct réussi")
-                        DispatchQueue.main.async {
-                            self.isExportingVideo = false
-                            self.exportProgress = 1.0
-                            self.showExportSuccessNotification = true
-                            
-                            // Masquer la notification après 3 secondes
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                self.showExportSuccessNotification = false
-                            }
-                        }
-                    }
-                } else {
-                    // Échec de l'export vidéo de base
-                    print("Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
-                    DispatchQueue.main.async {
-                        self.isExportingVideo = false
-                        self.alertType = .exportCompleted(message: "Échec de l'export vidéo: \(error?.localizedDescription ?? "Erreur inconnue")")
-                    }
-                }
-            }
+            self.isExportingVideo = false
         }
     }
     
+
+    private func runAutoEditing() {
+  
+    }
+
     // Nouvelle fonction pour exporter la vidéo sans musique externe
     private func exportVideoWithoutExternalMusic(
         asset: AVAsset,

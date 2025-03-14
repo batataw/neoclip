@@ -963,8 +963,7 @@ struct ContentView: View {
             HStack {
                 autoEditingButton
                 Spacer()
-                audioButton
-                restartButton
+                audioButton                
                 playPauseSegmentsButton
                 exportVideoButton
             }
@@ -2119,7 +2118,7 @@ struct ContentView: View {
                         // Elimine les segments trop courts, moins de 5 secondes
                         self.transcriptionSegments = self.groupShortSegments(self.transcriptionSegments)
 
-                        self.transcriptionSegments = self.checkIllustrationEligibility(self.transcriptionSegments)
+                        //self.transcriptionSegments = self.checkIllustrationEligibility(self.transcriptionSegments)
 
                         // Fusionner les segments courts
                         //self.transcriptionSegments = self.mergeShortSegments(self.transcriptionSegments)
@@ -3179,11 +3178,34 @@ struct ContentView: View {
         // Spécifier le type de fichier MP4
         savePanel.allowedContentTypes = [UTType.mpeg4Movie]
         
-        // Générer un nom de fichier unique avec un timestamp
+        // Utiliser le titre de la vidéo si disponible, sinon utiliser un nom par défaut avec timestamp
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
-        savePanel.nameFieldStringValue = "video_\(timestamp).mp4"
+        
+        if !videoTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Nettoyer le titre pour en faire un nom de fichier valide
+            var safeTitle = videoTitle
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "/", with: "-")
+                .replacingOccurrences(of: "\\", with: "-")
+                .replacingOccurrences(of: ":", with: "-")
+                .replacingOccurrences(of: "*", with: "-")
+                .replacingOccurrences(of: "?", with: "-")
+                .replacingOccurrences(of: "\"", with: "-")
+                .replacingOccurrences(of: "<", with: "-")
+                .replacingOccurrences(of: ">", with: "-")
+                .replacingOccurrences(of: "|", with: "-")
+            
+            // Limiter la longueur du titre à 50 caractères pour éviter des noms de fichiers trop longs
+            if safeTitle.count > 50 {
+                safeTitle = String(safeTitle.prefix(50))
+            }
+            
+            savePanel.nameFieldStringValue = "\(safeTitle).mp4"
+        } else {
+            savePanel.nameFieldStringValue = "video_\(timestamp).mp4"
+        }
         
         savePanel.canCreateDirectories = true
         
@@ -4039,7 +4061,32 @@ struct ContentView: View {
             // Créer un panel de sauvegarde
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [UTType.png]
-            savePanel.nameFieldStringValue = "titre_overlay.png"
+            
+            // Utiliser le titre vidéo pour le nom du fichier si disponible
+            if !videoTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Nettoyer le titre pour en faire un nom de fichier valide
+                var safeTitle = videoTitle
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "/", with: "-")
+                    .replacingOccurrences(of: "\\", with: "-")
+                    .replacingOccurrences(of: ":", with: "-")
+                    .replacingOccurrences(of: "*", with: "-")
+                    .replacingOccurrences(of: "?", with: "-")
+                    .replacingOccurrences(of: "\"", with: "-")
+                    .replacingOccurrences(of: "<", with: "-")
+                    .replacingOccurrences(of: ">", with: "-")
+                    .replacingOccurrences(of: "|", with: "-")
+                
+                // Limiter la longueur du titre à 30 caractères pour éviter des noms de fichiers trop longs
+                if safeTitle.count > 30 {
+                    safeTitle = String(safeTitle.prefix(30))
+                }
+                
+                savePanel.nameFieldStringValue = "titre_\(safeTitle).png"
+            } else {
+                savePanel.nameFieldStringValue = "titre_overlay.png"
+            }
+            
             savePanel.title = "Enregistrer le titre en PNG"
             savePanel.message = "Choisissez où enregistrer l'image du titre"
             savePanel.prompt = "Enregistrer"

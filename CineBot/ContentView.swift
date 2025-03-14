@@ -1376,14 +1376,22 @@ struct ContentView: View {
         HStack(spacing: 2) {
             // Play segment button
             Button(action: {
-                playSegmentOnly(transcriptionSegments[index])
+                // Si déjà en cours de lecture, arrêter
+                if isPlayingSelectedSegments {
+                    stopPlayingSelectedSegments()
+                    isPlayingSelectedSegments = false
+                }
+                
+                // Démarrer la lecture à partir de ce segment
+                isPlayingSelectedSegments = true
+                startPlayingSelectedSegments(startingIndex: index)
             }) {
                 Image(systemName: "play.circle.fill")
                     .foregroundColor(.purple)
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.horizontal, 2)
-            .help("Lire ce segment uniquement")
+            .help("Lire à partir de ce segment")
             
             // Boutons d'ajustement de durée
             Button(action: {
@@ -2306,7 +2314,7 @@ struct ContentView: View {
     }
 
     // Fonction pour démarrer la lecture des segments sélectionnés
-    private func startPlayingSelectedSegments() {
+    private func startPlayingSelectedSegments(startingIndex: Int? = nil) {
         // Filtrer les segments actifs
         let activeSegments = transcriptionSegments.filter { $0.isActive }
 
@@ -2315,10 +2323,15 @@ struct ContentView: View {
             return
         }
 
-        // Réinitialiser l'index
-        currentSegmentIndex = 0
+        // Réinitialiser l'index ou utiliser l'index fourni
+        if let startingIndex = startingIndex, 
+           let activeIndex = activeSegments.firstIndex(where: { $0.id == transcriptionSegments[startingIndex].id }) {
+            currentSegmentIndex = activeIndex
+        } else {
+            currentSegmentIndex = 0
+        }
 
-        // Commencer par le premier segment actif
+        // Commencer par le segment actif spécifié ou le premier
         playSegment(activeSegments[currentSegmentIndex])
 
         // Démarrer l'audio si disponible
@@ -2561,9 +2574,6 @@ struct ContentView: View {
             stopPlayingSelectedSegments()
         }
 
-        // Réinitialiser l'index de lecture
-        currentSegmentIndex = 0
-
         // Réinitialiser l'audio à sa position de départ si nécessaire
         if let player = audioPlayer {
             player.currentTime = 0
@@ -2571,7 +2581,7 @@ struct ContentView: View {
 
         // Démarrer la lecture depuis le début
         isPlayingSelectedSegments = true
-        startPlayingSelectedSegments()
+        startPlayingSelectedSegments() // This will use default value for startingIndex
     }
 
     // Ajoutez cette nouvelle fonction à ContentView

@@ -352,6 +352,10 @@ struct ContentView: View {
     // Property to store segment boundary time observer
     @State private var segmentBoundaryObserver: Any? = nil
 
+    // État pour l'auto-édition
+    @State private var isAutoEditing = false
+    @State private var autoEditStep = 0 // 0=inactif, 1=titre, 2=images, 3=effet, 4=export
+
     var body: some View {
         ZStack {
             mainContentView
@@ -1585,18 +1589,49 @@ struct ContentView: View {
             Button(action: {
                 runAutoEditing()
             }) {
-                Image(systemName: "arrow.up.arrow.down.circle.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(.red)
+                ZStack {
+                    Image(systemName: "wand.and.stars")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundColor(.purple)
+                    
+                    // Indicateur de chargement pendant l'auto-édition
+                    if isAutoEditing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.5)
+                    }
+                }
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isAutoEditing || isExportingVideo || transcriptionSegments.isEmpty)
 
-            Text("Auto-Editing")
+            // Texte qui change selon l'état de l'auto-édition
+            Text(autoEditingStatusText)
                 .font(.caption)
-                .foregroundColor(.red)
+                .foregroundColor(.purple)
         }
         .padding(.horizontal, 10)
+    }
+    
+    // Texte d'état pour l'auto-édition
+    private var autoEditingStatusText: String {
+        if !isAutoEditing {
+            return "Auto-Edit"
+        }
+        
+        switch autoEditStep {
+        case 1:
+            return "Création titre..."
+        case 2:
+            return "Génération images..."
+        case 3:
+            return "Configuration effet..."
+        case 4:
+            return "Export en cours..."
+        default:
+            return "Auto-Edit"
+        }
     }
 
 
@@ -3148,7 +3183,7 @@ struct ContentView: View {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
-        savePanel.nameFieldStringValue = "video_montage_\(timestamp).mp4"
+        savePanel.nameFieldStringValue = "video_\(timestamp).mp4"
         
         savePanel.canCreateDirectories = true
         
@@ -3199,7 +3234,85 @@ struct ContentView: View {
     
 
     private func runAutoEditing() {
-  
+        print("Démarrage de l'auto-édition")
+        isAutoEditing = true
+        autoEditStep = 1
+        
+        // 1. Générer le titre et la description si ce n'est pas déjà fait, puis activer showTitleOverlay
+        if videoTitle.isEmpty || videoDescription.isEmpty {
+            Task {
+                await generateTitleAndDescription()
+                // Activer l'affichage du titre après génération
+                DispatchQueue.main.async {
+                    self.showTitleOverlay = true
+                    self.autoEditStep = 2
+                    self.continueAutoEditing()
+                }
+            }
+        } else {
+            // Si le titre existe déjà, juste activer l'overlay
+            showTitleOverlay = true
+            autoEditStep = 2
+            continueAutoEditing()
+        }
+    }
+
+    // Fonction pour continuer l'auto-édition après la génération du titre
+    private func continueAutoEditing() {
+        // 2. Générer des images pour tous les segments éligibles qui n'ont pas encore d'images
+        Task {
+            // Parcourir tous les segments éligibles sans images
+            let eligibleSegmentsWithoutImages = transcriptionSegments.enumerated().filter { (index, segment) in
+                return segment.illustrationEligible && segment.illustrationImage == nil
+            }
+            
+            for (i, (index, _)) in eligibleSegmentsWithoutImages.enumerated() {
+                // Générer une image pour ce segment
+                await generateIllustration(for: index)
+                // Mettre à jour la progression dans l'UI
+                DispatchQueue.main.async {
+                    if i == eligibleSegmentsWithoutImages.count - 1 {
+                        self.autoEditStep = 3
+                    }
+                }
+                // Attendre un peu entre chaque génération pour éviter les surcharges
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconde
+            }
+            
+            // Si aucun segment à illustrer, passer à l'étape suivante
+            if eligibleSegmentsWithoutImages.isEmpty {
+                DispatchQueue.main.async {
+                    self.autoEditStep = 3
+                }
+            }
+            
+            // 3. Activer l'effet MIX s'il n'est pas déjà sélectionné
+            DispatchQueue.main.async {
+                if self.selectedEffect != "MIX" {
+                    self.selectedEffect = "MIX"
+                }
+                self.autoEditStep = 4
+                
+                // 4. Exporter la vidéo
+                self.exportSelectedSegments()
+                
+                // L'auto-édition sera considérée comme terminée après l'export
+                // La réinitialisation de isAutoEditing sera gérée dans la complétion de l'export
+                Task {
+                    // Attendre un peu avant de vérifier si l'export est terminé
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 seconde
+                    var checkCount = 0
+                    while self.isExportingVideo && checkCount < 300 { // Max 5 minutes (300 * 1s)
+                        try? await Task.sleep(nanoseconds: 1_000_000_000) // Vérifier toutes les secondes
+                        checkCount += 1
+                    }
+                    DispatchQueue.main.async {
+                        self.isAutoEditing = false
+                        self.autoEditStep = 0
+                    }
+                }
+            }
+        }
     }
 
     // Nouvelle fonction pour exporter la vidéo sans musique externe
@@ -4138,9 +4251,11 @@ struct ContentView: View {
                     // Réinitialiser l'index en cours d'illustration
                     self.currentIllustratingIndex = nil
                     
-                    // Afficher l'image générée
-                    self.selectedIllustrationIndex = index
-                    self.showIllustrationView = true
+                    // Afficher l'image générée seulement si nous ne sommes pas en mode auto-édition
+                    if !self.isAutoEditing {
+                        self.selectedIllustrationIndex = index
+                        self.showIllustrationView = true
+                    }
                 }
             }
         } catch {
@@ -4151,8 +4266,12 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 self.currentIllustratingIndex = nil
                 
-                // Afficher une alerte d'erreur
-                self.alertType = .custom(title: "Erreur", message: "Impossible de générer l'illustration: \(error.localizedDescription)")
+                // Afficher une alerte d'erreur seulement si nous ne sommes pas en mode auto-édition
+                if !self.isAutoEditing {
+                    self.alertType = .custom(title: "Erreur", message: "Impossible de générer l'illustration: \(error.localizedDescription)")
+                } else {
+                    print("Erreur d'illustration ignorée en mode auto-édition: \(error.localizedDescription)")
+                }
             }
         }
     }

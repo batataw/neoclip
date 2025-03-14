@@ -1356,7 +1356,7 @@ struct ContentView: View {
                 .foregroundColor(durationColor)
                 .fontWeight(duration < 1.0 || duration > 10.0 ? .bold : .regular)
 
-            // Affichage de l'ajustement de durée
+     // Affichage de l'ajustement de durée
             if transcriptionSegments[index].durationAdjustment != 0 {
                 Text(String(format: "%+.1fs", transcriptionSegments[index].durationAdjustment))
                     .font(.caption)
@@ -1364,7 +1364,26 @@ struct ContentView: View {
                         transcriptionSegments[index].durationAdjustment > 0 ? .green : .red
                     )
                     .padding(.horizontal, 4)
+            }                
+
+            // Affichage du statut d'éligibilité d'illustration cliquable
+            Text(transcriptionSegments[index].illustrationEligible ? "Avec Image" : "Sans Image")
+                .font(.caption)
+                .foregroundColor(transcriptionSegments[index].illustrationEligible ? .green : .orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(transcriptionSegments[index].illustrationEligible ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
+                .cornerRadius(4)
+                .onTapGesture {
+                    toggleIllustrationEligible(at: index)
+                }
+
+            // Bouton d'illustration avec DALL-E
+            if transcriptionSegments[index].illustrationEligible {
+                illustrationButton(for: index)                
             }
+
+       
 
             Spacer()
 
@@ -1430,8 +1449,7 @@ struct ContentView: View {
                 }
             }
             
-            // Bouton d'illustration avec DALL-E
-            illustrationButton(for: index)
+
 
             // Bouton d'activation/désactivation existant
             Button(action: {
@@ -1560,6 +1578,27 @@ struct ContentView: View {
         }
         .padding(.horizontal, 10)
     }
+
+
+    private var autoEditingButton: some View {
+        VStack {
+            Button(action: {
+                runAutoEditing()
+            }) {
+                Image(systemName: "arrow.up.arrow.down.circle.fill")
+                    .resizable()
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Text("Auto-Editing")
+                .font(.caption)
+                .foregroundColor(.red)
+        }
+        .padding(.horizontal, 10)
+    }
+
 
     private var audioButton: some View {
         VStack {
@@ -2595,9 +2634,9 @@ struct ContentView: View {
         transcriptionSegments[index].endTime += adjustment
 
         // Si ce n'est pas le dernier segment, ajuster le début du segment suivant
-        if index < transcriptionSegments.count - 1 {
-            transcriptionSegments[index + 1].startTime += adjustment
-        }
+        // if index < transcriptionSegments.count - 1 {
+        //     transcriptionSegments[index + 1].startTime += adjustment
+        // }
 
         // Mettre à jour la transcription formatée
         updateFormattedTranscription()
@@ -4069,6 +4108,7 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     var updatedSegment = self.transcriptionSegments[index]
                     updatedSegment.illustrationImage = image
+                    updatedSegment.illustrationEligible = true
                     self.transcriptionSegments[index] = updatedSegment
                     
                     // Réinitialiser l'index en cours d'illustration
@@ -4194,8 +4234,7 @@ struct ContentView: View {
             // Changer l'icône si une image existe déjà
             Image(systemName: transcriptionSegments[index].illustrationImage != nil ? "photo.fill" : "photo")
                 .foregroundColor(
-                    transcriptionSegments[index].illustrationImage != nil ? .green : 
-                    transcriptionSegments[index].illustrationEligible ? .orange : .gray
+                    transcriptionSegments[index].illustrationImage != nil ? .green :  .gray                    
                 )
         }
         .buttonStyle(PlainButtonStyle())
@@ -4677,6 +4716,15 @@ struct ContentView: View {
         
         // Un segment est le début d'un groupe si son indexFusion est différent du segment précédent
         return transcriptionSegments[index].indexFusion != transcriptionSegments[index - 1].indexFusion
+    }
+
+    // Fonction pour basculer l'état d'éligibilité d'illustration d'un segment
+    private func toggleIllustrationEligible(at index: Int) {
+        guard index < transcriptionSegments.count else { return }
+        
+        var updatedSegment = transcriptionSegments[index]
+        updatedSegment.illustrationEligible.toggle()
+        transcriptionSegments[index] = updatedSegment
     }
 }
 

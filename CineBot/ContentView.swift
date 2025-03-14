@@ -4567,6 +4567,26 @@ struct ContentView: View {
         let videoDurationInSeconds = videoAsset.duration.seconds
         print("Durée totale de la vidéo: \(videoDurationInSeconds) secondes")
         
+        // Calculer les nouveaux timestamps pour les segments en fonction de leur position dans la vidéo exportée
+        var segmentTimestampMap: [(originalSegment: TranscriptionSegment, newStartTime: Double, newEndTime: Double)] = []
+        var currentTime: Double = 0.0
+        
+        // Première étape: Recalculer les timestamps pour chaque segment actif
+        for segment in activeSegments {
+            let segmentDuration = segment.endTime - segment.startTime + segment.durationAdjustment
+            segmentTimestampMap.append((
+                originalSegment: segment,
+                newStartTime: currentTime,
+                newEndTime: currentTime + segmentDuration
+            ))
+            currentTime += segmentDuration
+        }
+        
+        // Afficher les mappings pour le debug
+        for mapping in segmentTimestampMap {
+            print("Segment original: \(mapping.originalSegment.startTime)-\(mapping.originalSegment.endTime) -> Nouveau: \(mapping.newStartTime)-\(mapping.newEndTime)")
+        }
+        
         // Identifier les segments qui dépassent la durée de la vidéo
         var segmentsOutsideVideoDuration: [(segment: TranscriptionSegment, startTime: Double, endTime: Double, duration: Double)] = []
         
@@ -4574,38 +4594,36 @@ struct ContentView: View {
         for segment in segmentsWithImages {
             guard let _ = segment.illustrationImage else { continue }
             
-            // Utiliser les temps précalculés s'ils existent, sinon les calculer
+            // Trouver le nouveau timing pour ce segment
+            guard let newTiming = segmentTimestampMap.first(where: { $0.originalSegment.id == segment.id }) else {
+                print("Erreur: Impossible de trouver le nouveau timing pour le segment \(segment.id)")
+                continue
+            }
+            
+            // Utiliser les nouveaux timestamps pour calculer les temps d'affichage des images
             var imageStartTime: Double
             var imageEndTime: Double
             
-            if let startTime = segment.illustrationImageStartTime, let endTime = segment.illustrationImageEndTime {
-                // Utiliser les temps précalculés lors de la prévisualisation
-                imageStartTime = startTime
-                imageEndTime = endTime
-                print("Utilisation des temps précalculés pour segment \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
+            let segmentDuration = newTiming.newEndTime - newTiming.newStartTime
+            
+            print("Calcul des temps pour segment de \(newTiming.newStartTime) à \(newTiming.newEndTime), durée: \(segmentDuration)")
+            
+            if segmentDuration > 6.0 {
+                // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
+                let middleTime = newTiming.newStartTime + (segmentDuration / 2)
+                imageStartTime = middleTime - 1.5
+                imageEndTime = imageStartTime + 3.0
+                print("Segment > 6s: image de \(imageStartTime) à \(imageEndTime)")
+            } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
+                imageStartTime = newTiming.newEndTime - 3.0
+                imageEndTime = newTiming.newEndTime
+                print("Segment 3-6s: image de \(imageStartTime) à \(imageEndTime)")
             } else {
-                // Calculer les temps d'affichage selon les mêmes règles que pendant la lecture
-                let segmentDuration = segment.endTime - segment.startTime
-                
-                print("Calcul des temps pour segment de \(segment.startTime) à \(segment.endTime), durée: \(segmentDuration)")
-                
-                if segmentDuration > 6.0 {
-                    // Si le segment dure plus de 6s, afficher l'image à t/2 - 1,5s pendant 3s
-                    let middleTime = segment.startTime + (segmentDuration / 2)
-                    imageStartTime = middleTime - 1.5
-                    imageEndTime = imageStartTime + 3.0
-                    print("Segment > 6s: image de \(imageStartTime) à \(imageEndTime)")
-                } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
-                    // Si le segment dure entre 3s et 6s, afficher l'image à la fin (t-3s) pendant 3s
-                    imageStartTime = segment.endTime - 3.0
-                    imageEndTime = segment.endTime
-                    print("Segment 3-6s: image de \(imageStartTime) à \(imageEndTime)")
-                } else {
-                    // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
-                    imageStartTime = segment.startTime
-                    imageEndTime = segment.endTime
-                    print("Segment < 3s: image de \(imageStartTime) à \(imageEndTime)")
-                }
+                // Si le segment dure moins de 3s, afficher l'image pendant toute la durée du segment
+                imageStartTime = newTiming.newStartTime
+                imageEndTime = newTiming.newEndTime
+                print("Segment < 3s: image de \(imageStartTime) à \(imageEndTime)")
             }
             
             // S'assurer que les temps sont dans les limites de la vidéo
@@ -4676,29 +4694,27 @@ struct ContentView: View {
                 )
             } else {
                 // Segment normal qui ne dépasse pas la durée de la vidéo
+                // Trouver le nouveau timing pour ce segment
+                guard let newTiming = segmentTimestampMap.first(where: { $0.originalSegment.id == segment.id }) else {
+                    print("Erreur: Impossible de trouver le nouveau timing pour le segment \(segment.id)")
+                    continue
+                }
+                
                 var imageStartTime: Double
                 var imageEndTime: Double
                 
-                if let startTime = segment.illustrationImageStartTime, let endTime = segment.illustrationImageEndTime {
-                    // Utiliser les temps précalculés lors de la prévisualisation
-                    imageStartTime = startTime
-                    imageEndTime = endTime
-                    print("Utilisation des temps précalculés pour segment normal \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
+                let segmentDuration = newTiming.newEndTime - newTiming.newStartTime
+                
+                if segmentDuration > 6.0 {
+                    let middleTime = newTiming.newStartTime + (segmentDuration / 2)
+                    imageStartTime = middleTime - 1.5
+                    imageEndTime = imageStartTime + 3.0
+                } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
+                    imageStartTime = newTiming.newEndTime - 3.0
+                    imageEndTime = newTiming.newEndTime
                 } else {
-                    // Calculer les temps d'affichage
-                    let segmentDuration = segment.endTime - segment.startTime
-                    
-                    if segmentDuration > 6.0 {
-                        let middleTime = segment.startTime + (segmentDuration / 2)
-                        imageStartTime = middleTime - 1.5
-                        imageEndTime = imageStartTime + 3.0
-                    } else if segmentDuration >= 3.0 && segmentDuration <= 6.0 {
-                        imageStartTime = segment.endTime - 3.0
-                        imageEndTime = segment.endTime
-                    } else {
-                        imageStartTime = segment.startTime
-                        imageEndTime = segment.endTime
-                    }
+                    imageStartTime = newTiming.newStartTime
+                    imageEndTime = newTiming.newEndTime
                 }
                 
                 // S'assurer que les temps sont dans les limites de la vidéo
@@ -4714,7 +4730,7 @@ struct ContentView: View {
                 
                 print("Temps pour segment normal \(segment.startTime)-\(segment.endTime): \(imageStartTime) à \(imageEndTime)")
                 
-                // Ajouter l'image avec les temps normaux
+                // Ajouter l'image avec les temps recalculés
                 addImageLayer(
                     image: image,
                     imageStartTime: imageStartTime,
@@ -4724,7 +4740,7 @@ struct ContentView: View {
                 )
             }
         }
-        
+
         // Configurer la composition vidéo avec le layer parent
         let animationTool = AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parentLayer)
         videoComposition.animationTool = animationTool

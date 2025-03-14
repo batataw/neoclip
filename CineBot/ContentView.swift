@@ -19,7 +19,8 @@ struct TranscriptionSegment: Identifiable {
     var durationAdjustment: Double = 0.0  // Pour suivre l'ajustement de durée
     var illustrationImage: NSImage? = nil // Pour stocker l'illustration générée
     var illustrationImageStartTime: Double? = nil // Pour stocker le temps de début d'affichage de l'image
-    var illustrationImageEndTime: Double? = nil // Pour stocker le temps de fin d'affichage de l'image
+    var illustrationImageEndTime: Double? = nil // Pour stocker le temps de fin d'affichage de l'image    
+    var illustrationEligible: Bool = false
 }
 
 // Structure pour la requête ChatGPT
@@ -1226,6 +1227,17 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(transcriptionSegments.indices, id: \.self) { index in
+                        let isGroupStart = isStartOfGroup(index)
+                        
+                        if isGroupStart && index > 0 {
+                            // Ajouter un séparateur entre les groupes
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(height: 1)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 4)
+                        }
+                        
                         segmentView(for: index)
                             .id("segment_\(index)")  // Ajouter un ID unique pour chaque segment
                     }
@@ -1255,6 +1267,8 @@ struct ContentView: View {
     private func segmentView(for index: Int) -> some View {
         // Déterminer si ce segment est le segment en cours de lecture
         let isCurrentlyPlaying = isPlayingSelectedSegments && isCurrentPlayingSegment(index)
+        let groupIndex = transcriptionSegments[index].indexFusion
+        let groupColor = getColorForGroup(groupIndex)
         
         return VStack(alignment: .leading, spacing: 4) {
             segmentHeader(for: index)
@@ -1267,19 +1281,23 @@ struct ContentView: View {
                 if isCurrentlyPlaying {
                     // Segment en cours de lecture - surbrillance verte
                     Color.green.opacity(0.2)
-                } else if transcriptionSegments[index].isActive {
-                    // Segment actif mais pas en cours de lecture
-                    Color.blue.opacity(0.1)
-                } else {
+                } else if !transcriptionSegments[index].isActive {
                     // Segment inactif
                     Color.gray.opacity(0.1)
+                } else {
+                    // Segment actif - couleur de groupe avec faible opacité
+                    groupColor.opacity(0.1)
                 }
             }
         )
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isCurrentlyPlaying ? Color.green : Color.clear, lineWidth: 2)
+                .stroke(
+                    isCurrentlyPlaying ? Color.green : 
+                    (transcriptionSegments[index].isActive ? groupColor.opacity(0.3) : Color.clear), 
+                    lineWidth: 2
+                )
         )
         .onTapGesture(count: 2) {
             navigateToSegment(transcriptionSegments[index])
@@ -1304,6 +1322,18 @@ struct ContentView: View {
                 .padding(.vertical, 2)
                 .background(Color.blue.opacity(0.1))
                 .cornerRadius(4)
+            
+            // Ajout de l'indicateur de groupe (indexFusion)
+            let groupIndex = transcriptionSegments[index].indexFusion
+            let groupColor = getColorForGroup(groupIndex)
+            
+            // Text("Groupe \(groupIndex)")
+            //     .font(.caption)
+            //     .foregroundColor(.white)
+            //     .padding(.horizontal, 6)
+            //     .padding(.vertical, 2)
+            //     .background(groupColor)
+            //     .cornerRadius(4)
 
             // Ajout du nombre de mots et de caractères avec coloration de la durée
             let duration = transcriptionSegments[index].duration
@@ -2001,6 +2031,14 @@ struct ContentView: View {
                         // Générer les segments de phrases pour l'interface utilisateur
                         self.transcriptionSegments = self.createPhraseSegments(rawSegments)
 
+                        // Tag les segments, par groupe 
+                        self.transcriptionSegments = self.tagSegmentsByGroup(self.transcriptionSegments)
+
+                        // Elimine les segments trop courts, moins de 5 secondes
+                        self.transcriptionSegments = self.groupShortSegments(self.transcriptionSegments)
+
+                        self.transcriptionSegments = self.checkIllustrationEligibility(self.transcriptionSegments)
+
                         // Fusionner les segments courts
                         //self.transcriptionSegments = self.mergeShortSegments(self.transcriptionSegments)
 
@@ -2024,6 +2062,179 @@ struct ContentView: View {
                 self.recognitionTask = task
             }
         }
+    }
+
+    private func checkIllustrationEligibility(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
+        guard !segments.isEmpty else { return [] }
+        
+        var processedSegments = segments
+        let illustrationInterval: TimeInterval = 15.0  // Intervalle de 15 secondes entre les illustrations
+        
+        // Marquer le premier segment comme NON éligible (exception demandée)
+        processedSegments[0].illustrationEligible = false
+        
+        // On utilisera le premier segment comme point de référence pour le timing
+        var lastEligibleSegmentTime = processedSegments[0].startTime
+        
+        // Parcourir les segments à partir du deuxième
+        for i in 1..<processedSegments.count {
+            let currentSegment = processedSegments[i]
+            
+            // Si le segment actuel est à plus de 15 secondes du dernier segment éligible ou du début,
+            // le marquer comme éligible pour une illustration
+            if currentSegment.startTime - lastEligibleSegmentTime >= illustrationInterval {
+                processedSegments[i].illustrationEligible = true
+                lastEligibleSegmentTime = currentSegment.startTime
+            } else {
+                processedSegments[i].illustrationEligible = false
+            }
+        }
+        
+        return processedSegments
+    }
+
+    private func groupShortSegments(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
+        guard !segments.isEmpty else { return [] }
+        
+        var processedSegments = segments
+        let shortThreshold: TimeInterval = 5.0 // Segments de moins de 5 secondes
+        var didMerge = true
+        
+        // Continuer à fusionner tant qu'il y a des fusions qui se produisent
+        while didMerge {
+            didMerge = false
+            
+            // Parcourir tous les segments pour trouver des segments courts
+            var i = 0
+            while i < processedSegments.count {
+                let currentSegment = processedSegments[i]
+                
+                // Vérifier si le segment est court
+                if currentSegment.duration < shortThreshold {
+                    // Trouver les voisins potentiels (même groupe)
+                    var prevNeighborIndex: Int? = nil
+                    var nextNeighborIndex: Int? = nil
+                    
+                    // Vérifier le segment précédent
+                    if i > 0 && processedSegments[i-1].indexFusion == currentSegment.indexFusion {
+                        prevNeighborIndex = i-1
+                    }
+                    
+                    // Vérifier le segment suivant
+                    if i < processedSegments.count-1 && processedSegments[i+1].indexFusion == currentSegment.indexFusion {
+                        nextNeighborIndex = i+1
+                    }
+                    
+                    // S'il y a des voisins potentiels, fusionner avec le plus court
+                    if let prevIndex = prevNeighborIndex, let nextIndex = nextNeighborIndex {
+                        // Comparer les durées des deux voisins
+                        let prevDuration = processedSegments[prevIndex].duration
+                        let nextDuration = processedSegments[nextIndex].duration
+                        
+                        if prevDuration <= nextDuration {
+                            // Fusionner avec le segment précédent
+                            mergeTwoSegments(at: prevIndex, and: i, in: &processedSegments)
+                        } else {
+                            // Fusionner avec le segment suivant
+                            mergeTwoSegments(at: i, and: nextIndex, in: &processedSegments)
+                        }
+                        didMerge = true
+                    } else if let prevIndex = prevNeighborIndex {
+                        // Fusionner avec le segment précédent
+                        mergeTwoSegments(at: prevIndex, and: i, in: &processedSegments)
+                        didMerge = true
+                    } else if let nextIndex = nextNeighborIndex {
+                        // Fusionner avec le segment suivant
+                        mergeTwoSegments(at: i, and: nextIndex, in: &processedSegments)
+                        didMerge = true
+                    }
+                    
+                    // Si une fusion a été effectuée, ne pas incrémenter i car nous devons réévaluer le nouvel élément à cette position
+                    if didMerge {
+                        continue
+                    }
+                }
+                
+                i += 1
+            }
+        }
+        
+        // Réindexer les segments pour garantir des indices séquentiels
+        for i in 0..<processedSegments.count {
+            processedSegments[i].index = i
+        }
+        
+        return processedSegments
+    }
+    
+    // Fonction auxiliaire pour fusionner deux segments
+    private func mergeTwoSegments(at firstIndex: Int, and secondIndex: Int, in segments: inout [TranscriptionSegment]) {
+        let firstSegment = segments[firstIndex]
+        let secondSegment = segments[secondIndex]
+        
+        // Créer un nouveau segment fusionné
+        var mergedSegment = TranscriptionSegment(
+            index: firstSegment.index,
+            id: firstSegment.id,
+            text: firstSegment.text + " " + secondSegment.text,
+            startTime: min(firstSegment.startTime, secondSegment.startTime),
+            endTime: max(firstSegment.endTime, secondSegment.endTime)
+        )
+        
+        // Conserver les autres propriétés importantes
+        mergedSegment.indexFusion = firstSegment.indexFusion
+        mergedSegment.isActive = firstSegment.isActive && secondSegment.isActive
+        
+        // Si l'un des segments a un ajustement de durée, conserver l'ajustement total
+        mergedSegment.durationAdjustment = firstSegment.durationAdjustment + secondSegment.durationAdjustment
+        
+        // Gérer les illustrations si présentes
+        if firstSegment.illustrationImage != nil {
+            mergedSegment.illustrationImage = firstSegment.illustrationImage
+            mergedSegment.illustrationImageStartTime = firstSegment.illustrationImageStartTime
+            mergedSegment.illustrationImageEndTime = firstSegment.illustrationImageEndTime
+        } else if secondSegment.illustrationImage != nil {
+            mergedSegment.illustrationImage = secondSegment.illustrationImage
+            mergedSegment.illustrationImageStartTime = secondSegment.illustrationImageStartTime
+            mergedSegment.illustrationImageEndTime = secondSegment.illustrationImageEndTime
+        }
+        
+        // Remplacer le premier segment par le segment fusionné
+        segments[firstIndex] = mergedSegment
+        
+        // Supprimer le second segment
+        segments.remove(at: secondIndex)
+    }
+
+    private func tagSegmentsByGroup(_ segments: [TranscriptionSegment]) -> [TranscriptionSegment] {
+        guard !segments.isEmpty else { return [] }
+        
+        var taggedSegments = segments
+        let pauseThreshold: TimeInterval = 2.0  // 2 secondes entre segments
+        var currentGroupIndex = 1
+        
+        // Attribuer le premier groupe au premier segment
+        taggedSegments[0].indexFusion = currentGroupIndex
+        
+        // Parcourir tous les segments à partir du deuxième
+        for i in 1..<taggedSegments.count {
+            let currentSegment = taggedSegments[i]
+            let previousSegment = taggedSegments[i-1]
+            
+            // Calculer la pause entre le segment précédent et le segment actuel
+            let pauseDuration = currentSegment.startTime - previousSegment.endTime
+            
+            // Si la pause est inférieure au seuil, garder le même groupe
+            // Sinon, créer un nouveau groupe
+            if pauseDuration < pauseThreshold {
+                taggedSegments[i].indexFusion = currentGroupIndex
+            } else {
+                currentGroupIndex += 1
+                taggedSegments[i].indexFusion = currentGroupIndex
+            }
+        }
+        
+        return taggedSegments
     }
 
     private func processTranscriptionSegments(_ segments: [TranscriptionSegment]) -> String {
@@ -3972,7 +4183,10 @@ struct ContentView: View {
         }) {
             // Changer l'icône si une image existe déjà
             Image(systemName: transcriptionSegments[index].illustrationImage != nil ? "photo.fill" : "photo")
-                .foregroundColor(transcriptionSegments[index].illustrationImage != nil ? .green : .white)
+                .foregroundColor(
+                    transcriptionSegments[index].illustrationImage != nil ? .green : 
+                    transcriptionSegments[index].illustrationEligible ? .orange : .gray
+                )
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(chatGPTService.isGeneratingImage)
@@ -4427,6 +4641,32 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // Fonction pour générer une couleur distincte pour chaque groupe
+    private func getColorForGroup(_ groupIndex: Int) -> Color {
+        // Liste de couleurs prédéfinies pour les premiers groupes (pour une meilleure reconnaissance visuelle)
+        let predefinedColors: [Color] = [
+            .blue, .gray, .orange, .purple, .red, .pink, .yellow, .teal
+        ]
+        
+        if groupIndex <= predefinedColors.count {
+            return predefinedColors[groupIndex - 1]  // -1 car indexFusion commence à 1
+        } else {
+            // Pour les groupes au-delà de notre liste prédéfinie, générer une couleur avec un hue basé sur l'index
+            let hue = Double((groupIndex * 137) % 360) / 360.0  // Utilisation du nombre d'or (approximatif) pour une bonne distribution
+            return Color(hue: hue, saturation: 0.7, brightness: 0.7)
+        }
+    }
+
+    // Fonction pour déterminer si un segment est le début d'un nouveau groupe
+    private func isStartOfGroup(_ index: Int) -> Bool {
+        if index == 0 {
+            return true // Le premier segment est toujours le début d'un groupe
+        }
+        
+        // Un segment est le début d'un groupe si son indexFusion est différent du segment précédent
+        return transcriptionSegments[index].indexFusion != transcriptionSegments[index - 1].indexFusion
     }
 }
 

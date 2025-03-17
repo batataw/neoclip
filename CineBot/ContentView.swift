@@ -270,6 +270,7 @@ struct ContentView: View {
     @State private var isZoomedIn: Bool = false
     @State private var isCorrectingText: Bool = false  // Pour suivre l'état de la correction
     @StateObject private var chatGPTService = ChatGPTService(apiKey: APIKeys.openAI)
+    @StateObject private var stabilityAIService = StabilityAIService(apiKey: APIKeys.stabilityAI)
     @State private var audioURL: URL? = nil
     @State private var showAudioFileName: Bool = false
     @State private var audioPlayer: AVAudioPlayer?
@@ -4287,7 +4288,7 @@ struct ContentView: View {
             """
             
             // Appeler DALL-E
-            if let image = try await chatGPTService.generateImage(for: prompt) {
+            if let image = try await stabilityAIService.generateImage(for: prompt, translateToEnglish: true) {
                 // Mettre à jour le segment avec l'image générée
                 DispatchQueue.main.async {
                     var updatedSegment = self.transcriptionSegments[index]

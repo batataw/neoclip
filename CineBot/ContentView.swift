@@ -1165,17 +1165,31 @@ struct ContentView: View {
 
     // Effect selector
     private var effectSelector: some View {
-        Picker("Effet", selection: $selectedEffect) {
-            Text("SANS").tag("SANS")
-            Text("JUMP CUT").tag("JUMP CUT")
-            Text("ZOOM").tag("ZOOM")
-            Text("MIX").tag("MIX")
+        HStack {
+            Picker("", selection: $selectedEffect) {
+                Text("SANS").tag("SANS")
+                Text("JUMP CUT").tag("JUMP CUT")
+                Text("ZOOM").tag("ZOOM")
+                Text("MIX").tag("MIX")
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding()
+            .background(Color.green.opacity(0.2))
+            .cornerRadius(8)
+            .shadow(color: .gray, radius: 3, x: 0, y: 2)
+            
+            // Affichage de la durée totale des segments actifs
+            Text(formatDuration(calculerDureeTotaleSegmentsActifs(segments: transcriptionSegments)))
+                .font(.system(size: 16, weight: .bold))
+                .padding(8)
+                .frame(height: 50)
+                .background(Color.green.opacity(0.2))
+                .foregroundColor(.white)
+                .cornerRadius(8)
+                .compositingGroup() // Assure que tous les effets visuels sont groupés avant d'appliquer l'ombre
+                .shadow(color: .gray, radius: 2, x: 0, y: 1)
+                .drawingGroup() // Utilise Metal pour le rendu, ce qui peut améliorer la netteté
         }
-        .pickerStyle(SegmentedPickerStyle())
-        .padding()
-        .background(Color.green.opacity(0.2))
-        .cornerRadius(8)
-        .shadow(color: .gray, radius: 3, x: 0, y: 2)
         .padding(.horizontal)
     }
 
@@ -4288,7 +4302,7 @@ struct ContentView: View {
             """
             
             // Appeler DALL-E
-            if let image = try await stabilityAIService.generateImage(for: prompt, translateToEnglish: true) {
+            if let image = try await chatGPTService.generateImage(for: prompt) {
                 // Mettre à jour le segment avec l'image générée
                 DispatchQueue.main.async {
                     var updatedSegment = self.transcriptionSegments[index]
@@ -4951,4 +4965,21 @@ func openFileDialog() -> URL? {
         return openPanel.url
     }
     return nil
+}
+
+// Fonction pour calculer la durée totale des segments actifs
+func calculerDureeTotaleSegmentsActifs(segments: [TranscriptionSegment]) -> TimeInterval {
+    return segments
+        .filter { $0.isActive }
+        .reduce(0) { $0 + ($1.endTime - $1.startTime + $1.durationAdjustment) }
+}
+
+// Fonction pour formater la durée en format lisible (HH:MM:SS)
+func formatDuration(_ duration: TimeInterval) -> String {
+    let formatter = DateComponentsFormatter()
+    formatter.allowedUnits = [.minute, .second]
+    formatter.unitsStyle = .positional
+    formatter.zeroFormattingBehavior = .pad
+    
+    return formatter.string(from: duration) ?? "00:00"
 }
